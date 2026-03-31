@@ -1,0 +1,4 @@
+-r ../requirements.txt
+
+# Docker runtime pinned to avoid non-essential tooling in containers.
+gunicorn==22.0.0

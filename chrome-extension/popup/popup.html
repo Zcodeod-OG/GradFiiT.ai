@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ALTER.ai</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo-section">
+        <div class="logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="url(#gradient1)" stroke="url(#gradient2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 17L12 22L22 17" stroke="url(#gradient2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12L12 17L22 12" stroke="url(#gradient2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <defs>
+              <linearGradient id="gradient1" x1="2" y1="2" x2="22" y2="12" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#8B5CF6"/>
+                <stop offset="1" stop-color="#3B82F6"/>
+              </linearGradient>
+              <linearGradient id="gradient2" x1="2" y1="12" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#8B5CF6"/>
+                <stop offset="1" stop-color="#3B82F6"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h1 class="title">ALTER.ai</h1>
+      </div>
+    </header>
+
+    <!-- Quick Stats Section -->
+    <section class="stats-section">
+      <div class="stats-header">
+        <span class="stats-label">Try-ons today</span>
+        <span class="stats-count" id="tryonCount">12/50</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width: 24%"></div>
+      </div>
+      <p class="stats-hint">38 try-ons remaining today</p>
+    </section>
+
+    <!-- Recent Try-ons Section -->
+    <section class="recent-section">
+      <h2 class="section-title">Recent Try-ons</h2>
+      <div class="thumbnails-grid">
+        <div class="thumbnail">
+          <img src="/placeholder.svg?height=90&width=90" alt="Recent try-on 1">
+          <div class="thumbnail-overlay">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>2m ago</span>
+          </div>
+        </div>
+        <div class="thumbnail">
+          <img src="/placeholder.svg?height=90&width=90" alt="Recent try-on 2">
+          <div class="thumbnail-overlay">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>15m ago</span>
+          </div>
+        </div>
+        <div class="thumbnail">
+          <img src="/placeholder.svg?height=90&width=90" alt="Recent try-on 3">
+          <div class="thumbnail-overlay">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>1h ago</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Actions Section -->
+    <section class="actions-section">
+      <button class="btn btn-primary" id="uploadBtn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Upload from Computer
+      </button>
+      <button class="btn btn-secondary" id="openAppBtn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+        Open App
+      </button>
+      <a href="#" class="link" id="howToUseLink">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        How to Use
+      </a>
+    </section>
+
+    <!-- Upgrade Section -->
+    <section class="upgrade-section">
+      <div class="upgrade-content">
+        <div class="upgrade-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </div>
+        <div class="upgrade-text">
+          <h3>Go Pro for unlimited try-ons</h3>
+          <p>Plus exclusive features & priority support</p>
+        </div>
+      </div>
+      <a href="#" class="upgrade-link" id="pricingLink">View Pricing →</a>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <button class="icon-btn" id="settingsBtn" title="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+        </svg>
+      </button>
+      <button class="icon-btn" id="helpBtn" title="Help">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

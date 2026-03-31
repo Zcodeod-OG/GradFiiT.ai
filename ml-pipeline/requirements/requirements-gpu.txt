@@ -1,0 +1,5 @@
+-r ../requirements.txt
+
+# GPU runtime extras
+nvidia-cudnn-cu12==9.3.0.75
+nvidia-cublas-cu12==12.6.1.4

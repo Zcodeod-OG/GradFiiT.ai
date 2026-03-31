@@ -1,0 +1,30 @@
+{
+  "sample_size": 4,
+  "success_count": 3,
+  "failure_count": 1,
+  "status_counts": {
+    "completed": 3,
+    "failed": 1
+  },
+  "p50_seconds_success": 7.1,
+  "p95_seconds_success": 8.8,
+  "p50_seconds_all": 7.95,
+  "p95_seconds_all": 11.3,
+  "failure_rate": 0.25,
+  "non_terminal_rate": 0.0,
+  "thresholds": {
+    "min_sample_size": 100,
+    "p50_threshold_seconds": 8.0,
+    "p95_threshold_seconds": 20.0,
+    "failure_rate_threshold": 0.01
+  },
+  "gates": {
+    "sample_size_minimum": false,
+    "has_successful_cases": true,
+    "p50_success_under_threshold": true,
+    "p95_success_under_threshold": true,
+    "failure_rate_under_threshold": false,
+    "all_cases_terminal": true
+  },
+  "pass": false
+}

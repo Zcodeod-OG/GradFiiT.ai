@@ -1,0 +1,6 @@
+-r ../requirements.txt
+
+# Local development extras
+ipython==8.27.0
+pre-commit==3.8.0
+ruff==0.6.4

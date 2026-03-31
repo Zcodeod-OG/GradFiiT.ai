@@ -1,0 +1,10 @@
+[
+  "ml-pipeline/tests/test_benchmark_runner.py::test_build_summary_counts_failure_statuses",
+  "ml-pipeline/tests/test_benchmark_runner.py::test_normalize_status_handles_empty_values",
+  "ml-pipeline/tests/test_calibrate_thresholds.py::test_evaluate_threshold_counts_confusion_matrix",
+  "ml-pipeline/tests/test_calibrate_thresholds.py::test_pick_best_uses_f1_then_recall_precision_accuracy",
+  "ml-pipeline/tests/test_calibrate_thresholds.py::test_threshold_grid_includes_end_value",
+  "ml-pipeline/tests/test_release_gate_check.py::test_gate_fails_for_small_sample_and_high_failure_rate",
+  "ml-pipeline/tests/test_release_gate_check.py::test_gate_fails_when_non_terminal_status_present",
+  "ml-pipeline/tests/test_release_gate_check.py::test_percentile_uses_nearest_rank_for_tail"
+]

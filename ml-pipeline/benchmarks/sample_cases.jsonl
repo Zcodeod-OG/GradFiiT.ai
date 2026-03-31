@@ -1,0 +1,2 @@
+{"person_image_url":"https://example.com/person1.jpg","garment_id":1,"quality":"auto","idempotency_key":"bench-0001"}
+{"person_image_url":"https://example.com/person2.jpg","garment_id":2,"quality":"auto","idempotency_key":"bench-0002"}

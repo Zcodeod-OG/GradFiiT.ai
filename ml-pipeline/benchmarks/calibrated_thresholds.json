@@ -1,0 +1,29 @@
+{
+  "rows": 6,
+  "label_balance": {
+    "positive": 3,
+    "negative": 3
+  },
+  "search": {
+    "start": 0.5,
+    "end": 0.95,
+    "step": 0.01,
+    "candidates": 46
+  },
+  "best": {
+    "threshold": 0.66,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "accuracy": 1.0,
+    "tp": 3,
+    "fp": 0,
+    "tn": 3,
+    "fn": 0
+  },
+  "recommended_thresholds": {
+    "excellent": 0.66,
+    "acceptable": 0.56,
+    "poor": 0.46
+  }
+}
