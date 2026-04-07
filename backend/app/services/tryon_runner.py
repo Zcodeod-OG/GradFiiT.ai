@@ -14,6 +14,7 @@ from typing import Optional
 from app.database import SessionLocal
 from app.models.tryon import TryOn, TryOnStatus
 from app.services.pipeline import get_pipeline_service
+from app.services.three_d_tryon import get_three_d_tryon_service
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ def run_tryon_pipeline(
     garment_description: str,
     quality: str,
     preprocessed_garment_url: Optional[str] = None,
+    mode: str = "2d",
     raise_on_error: bool = False,
 ) -> None:
     """Run the full pipeline and persist status/results on the TryOn row."""
@@ -87,30 +89,76 @@ def run_tryon_pipeline(
                 tryon.status = new_status
                 db.commit()
 
-        pipeline = get_pipeline_service()
-        result = pipeline.run_full_pipeline(
-            person_image_url=person_image_url,
-            garment_image_url=garment_image_url,
-            garment_description=garment_description,
-            quality=quality,
-            preprocessed_garment_url=preprocessed_garment_url,
-            on_stage_update=on_stage_update,
-        )
+        normalized_mode = (mode or "2d").lower().strip()
 
-        tryon.extracted_garment_url = result.get("extracted_garment_url")
-        tryon.stage1_result_url = result.get("stage1_url")
-        tryon.result_image_url = result.get("final_url")
-        tryon.quality_gate_score = result.get("quality_gate_score")
-        tryon.quality_gate_passed = result.get("quality_gate_passed")
-        tryon.rating_score = result.get("rating_score")
+        if normalized_mode == "3d":
+            tryon.status = TryOnStatus.AVATAR_3D_GENERATING
+            db.commit()
+
+            three_d_service = get_three_d_tryon_service()
+            user = tryon.user
+            avatar_metadata = user.avatar_metadata if user and isinstance(user.avatar_metadata, dict) else {}
+            can_reuse_avatar = bool(
+                user
+                and user.avatar_status == "ready"
+                and (user.avatar_model_id or user.avatar_model_url)
+            )
+            result = three_d_service.run(
+                person_image_url=person_image_url,
+                garment_image_url=garment_image_url,
+                garment_description=garment_description,
+                quality=quality,
+                existing_avatar_model_id=user.avatar_model_id if can_reuse_avatar else None,
+                existing_avatar_model_url=user.avatar_model_url if can_reuse_avatar else None,
+                existing_avatar_preview_url=user.avatar_preview_url if can_reuse_avatar else None,
+                existing_avatar_turntable_url=user.avatar_turntable_url if can_reuse_avatar else None,
+                body_profile=avatar_metadata.get("body_profile") if isinstance(avatar_metadata, dict) else None,
+                force_rebuild_avatar=not can_reuse_avatar,
+            )
+
+            tryon.status = TryOnStatus.GARMENT_FITTING_3D
+            db.commit()
+
+            tryon.result_image_url = result.get("result_image_url")
+            tryon.result_model_url = result.get("result_model_url")
+            tryon.result_turntable_url = result.get("result_turntable_url")
+            tryon.status = TryOnStatus.MODEL_RENDERING_3D
+            db.commit()
+            tryon.pipeline_metadata = {
+                "mode": "3d",
+                "provider": result.get("provider"),
+                "pose_engine": result.get("pose_engine"),
+                "avatar_reused": result.get("avatar_reused", False),
+                "avatar": result.get("avatar"),
+                "garment_fit": result.get("garment_fit"),
+            }
+        else:
+            pipeline = get_pipeline_service()
+            result = pipeline.run_full_pipeline(
+                person_image_url=person_image_url,
+                garment_image_url=garment_image_url,
+                garment_description=garment_description,
+                quality=quality,
+                preprocessed_garment_url=preprocessed_garment_url,
+                on_stage_update=on_stage_update,
+            )
+
+            tryon.extracted_garment_url = result.get("extracted_garment_url")
+            tryon.stage1_result_url = result.get("stage1_url")
+            tryon.result_image_url = result.get("final_url")
+            tryon.quality_gate_score = result.get("quality_gate_score")
+            tryon.quality_gate_passed = result.get("quality_gate_passed")
+            tryon.rating_score = result.get("rating_score")
+            tryon.pipeline_metadata = {
+                "mode": "2d",
+                "quality": result.get("quality"),
+                "timings": result.get("timings", {}),
+                "stages_run": result.get("stages_run", {}),
+            }
+
         tryon.status = TryOnStatus.COMPLETED
         tryon.lifecycle_status = "ready"
         tryon.error_message = None
-        tryon.pipeline_metadata = {
-            "quality": result.get("quality"),
-            "timings": result.get("timings", {}),
-            "stages_run": result.get("stages_run", {}),
-        }
         tryon.execution_finished_at = _utc_now()
         if tryon.execution_started_at and tryon.execution_finished_at:
             tryon.execution_ms = max(
