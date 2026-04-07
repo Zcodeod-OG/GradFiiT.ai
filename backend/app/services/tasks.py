@@ -36,6 +36,7 @@ def process_tryon_task(
     garment_description: str,
     quality: str,
     preprocessed_garment_url: str | None = None,
+    mode: str = "2d",
 ):
     """Celery task for processing virtual try-on."""
     try:
@@ -46,6 +47,7 @@ def process_tryon_task(
             garment_description=garment_description,
             quality=quality,
             preprocessed_garment_url=preprocessed_garment_url,
+            mode=mode,
             raise_on_error=True,
         )
     except Exception as exc:
