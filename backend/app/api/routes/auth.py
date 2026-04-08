@@ -11,13 +11,18 @@ from app.config import settings
 from app.api.deps import get_current_active_user
 from app.services.subscription import PLAN_RULES
 from passlib.context import CryptContext
+from passlib.exc import UnknownHashError
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated="auto")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except (ValueError, UnknownHashError):
+        # Unknown/invalid hash formats should fail authentication, not crash login.
+        return False
 
 
 def get_password_hash(password: str) -> str:
@@ -43,7 +48,8 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
     # Check if user already exists
-    db_user = db.query(User).filter(User.email == user_data.email).first()
+    normalized_email = user_data.email.strip().lower()
+    db_user = db.query(User).filter(User.email == normalized_email).first()
     if db_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -63,7 +69,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     # Create new user
     hashed_password = get_password_hash(user_data.password)
     db_user = User(
-        email=user_data.email,
+        email=normalized_email,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
         subscription_tier=tier,
@@ -80,7 +86,8 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
     """Login and get access token"""
-    user = db.query(User).filter(User.email == form_data.username).first()
+    normalized_email = form_data.username.strip().lower()
+    user = db.query(User).filter(User.email == normalized_email).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
