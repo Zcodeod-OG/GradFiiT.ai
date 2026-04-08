@@ -15,7 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
 from app.database import engine
-from app.api.routes import auth, garments, tryon, upload
+from app.api.routes import auth, garments, tryon, upload, user
 
 
 logger = logging.getLogger("alterai.api")
@@ -126,6 +126,7 @@ async def request_logging_middleware(request: Request, call_next: Callable):
 
 # Routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(user.router, tags=["user"])
 app.include_router(garments.router, prefix="/api/garments", tags=["garments"])
 app.include_router(tryon.router, tags=["tryon"])
 app.include_router(upload.router, prefix="/api/upload", tags=["upload"])

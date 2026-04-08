@@ -9,10 +9,11 @@ from app.models.user import User
 from app.schemas.user import UserCreate, User as UserSchema
 from app.config import settings
 from app.api.deps import get_current_active_user
+from app.services.subscription import PLAN_RULES
 from passlib.context import CryptContext
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -49,12 +50,24 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered",
         )
 
+    tier = (user_data.subscription_tier or "free_2d").strip().lower()
+    if tier not in PLAN_RULES:
+        tier = "free_2d"
+
+    preferred_mode = (user_data.preferred_tryon_mode or "2d").strip().lower()
+    if preferred_mode not in {"2d", "3d"}:
+        preferred_mode = "2d"
+    if preferred_mode not in PLAN_RULES[tier].allowed_modes:
+        preferred_mode = PLAN_RULES[tier].allowed_modes[0]
+
     # Create new user
     hashed_password = get_password_hash(user_data.password)
     db_user = User(
         email=user_data.email,
         hashed_password=hashed_password,
         full_name=user_data.full_name,
+        subscription_tier=tier,
+        preferred_tryon_mode=preferred_mode,
     )
     db.add(db_user)
     db.commit()

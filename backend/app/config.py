@@ -2,12 +2,16 @@
 """AULTER.AI - Application Configuration
 Centralized settings management using Pydantic"""
 
-import os
+from pathlib import Path
 from typing import Optional, List
 from functools import lru_cache
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_FILE_PATH = BASE_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -17,7 +21,7 @@ class Settings(BaseSettings):
     
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE_PATH),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore"
@@ -332,6 +336,16 @@ class Settings(BaseSettings):
         description="Enable Redis caching"
     )
 
+    QUICK_PREVIEW_DEFAULT_PERSON_IMAGE_URL: str = Field(
+        default="https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=960&q=80",
+        description="Fallback model image URL for quick try-on previews"
+    )
+
+    QUICK_PREVIEW_CACHE_TTL_SECONDS: int = Field(
+        default=600,
+        description="In-memory cache TTL for quick preview responses"
+    )
+
     EMBEDDING_CACHE_TTL_SECONDS: int = Field(
         default=86400,
         description="TTL for cached CLIP embeddings"
@@ -355,6 +369,60 @@ class Settings(BaseSettings):
     QUALITY_THRESHOLD_POOR: float = Field(
         default=0.60,
         description="Combined quality score threshold lower bound"
+    )
+
+    # ==================== Tripo AI (3D Pipeline) ====================
+
+    TRIPO_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Tripo API key for 3D mannequin generation"
+    )
+
+    TRIPO_API_BASE_URL: str = Field(
+        default="https://api.tripo3d.ai",
+        description="Base URL for Tripo API"
+    )
+
+    TRIPO_CREATE_AVATAR_ENDPOINT: str = Field(
+        default="/v2/openapi/avatar/create",
+        description="Tripo endpoint for avatar creation"
+    )
+
+    TRIPO_FIT_GARMENT_ENDPOINT: str = Field(
+        default="/v2/openapi/avatar/fit-garment",
+        description="Tripo endpoint for 3D garment fitting"
+    )
+
+    TRIPO_TASK_STATUS_ENDPOINT: str = Field(
+        default="/v2/openapi/task/{task_id}",
+        description="Tripo endpoint template for task status polling"
+    )
+
+    TRIPO_HTTP_TIMEOUT_SECONDS: int = Field(
+        default=30,
+        description="HTTP timeout for Tripo API requests"
+    )
+
+    TRIPO_POLL_INTERVAL_SECONDS: int = Field(
+        default=2,
+        description="Polling interval in seconds for async Tripo tasks"
+    )
+
+    TRIPO_MAX_WAIT_SECONDS: int = Field(
+        default=180,
+        description="Maximum wait time for Tripo async tasks"
+    )
+
+    # ==================== YOLO11 Pose (Quick Preview) ====================
+
+    YOLO11_POSE_ENABLED: bool = Field(
+        default=True,
+        description="Enable YOLO11 pose extraction for quick try-on previews"
+    )
+
+    YOLO11_POSE_MODEL: str = Field(
+        default="yolo11n-pose.pt",
+        description="Ultralytics model identifier/path for YOLO11 pose"
     )
     
     # ==================== Validators ====================

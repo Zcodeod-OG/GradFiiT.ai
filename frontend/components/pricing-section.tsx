@@ -5,55 +5,13 @@ import { motion, useInView } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Check, ArrowRight } from "lucide-react"
 import { TiltCard } from "@/components/ui/tilt-card"
-import { AnimatedCounter } from "@/components/ui/animated-counter"
 import Link from "next/link"
+import { PLAN_CARDS } from "@/lib/plans"
 
-const plans = [
-  {
-    name: "Free",
-    price: 0,
-    description: "Perfect for trying out ALTER.ai",
-    features: [
-      "5 try-ons per month",
-      "Standard quality",
-      "Basic support",
-      "Watermarked results",
-    ],
-    cta: "Start Free",
-    featured: false,
-  },
-  {
-    name: "Pro",
-    price: 29,
-    description: "For fashion enthusiasts",
-    features: [
-      "Unlimited try-ons",
-      "HD quality results",
-      "Priority support",
-      "No watermarks",
-      "Advanced editing tools",
-      "Save favorites",
-    ],
-    cta: "Get Pro",
-    featured: true,
-  },
-  {
-    name: "Business",
-    price: 99,
-    description: "For brands and retailers",
-    features: [
-      "Everything in Pro",
-      "API access",
-      "Custom branding",
-      "Team collaboration",
-      "Analytics dashboard",
-      "Dedicated support",
-      "White-label option",
-    ],
-    cta: "Contact Sales",
-    featured: false,
-  },
-]
+const plans = PLAN_CARDS.map((plan) => ({
+  ...plan,
+  cta: plan.code === "business" ? "Contact Sales" : "Choose Plan",
+}))
 
 export function PricingSection() {
   const ref = useRef(null)
@@ -80,7 +38,7 @@ export function PricingSection() {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto items-start">
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-8 max-w-7xl mx-auto items-start">
           {plans.map((plan, index) => (
             <motion.div
               key={plan.name}
@@ -122,13 +80,11 @@ export function PricingSection() {
                     </div>
 
                     <div className="flex items-baseline gap-1">
-                      <span className="text-5xl font-bold text-foreground">
-                        $<AnimatedCounter to={plan.price} duration={1.5} />
-                      </span>
-                      <span className="text-muted-foreground">/month</span>
+                      <span className="text-4xl font-bold text-foreground">{plan.priceLabel}</span>
+                      <span className="text-muted-foreground">{plan.cadence}</span>
                     </div>
 
-                    <Link href="/try" className="block">
+                    <Link href={plan.code === "business" ? "mailto:sales@alter.ai" : "/try"} className="block">
                       <Button
                         className={
                           plan.featured

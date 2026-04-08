@@ -1,11 +1,23 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { authApi } from "./api";
+import type { SubscriptionTier, TryOnMode } from "./plans";
 
 type User = {
   id: number;
   email: string;
   full_name: string | null;
+  subscription_tier: SubscriptionTier;
+  preferred_tryon_mode: TryOnMode;
+  avatar_status?: string;
+  avatar_source_image_url?: string | null;
+  avatar_model_id?: string | null;
+  avatar_model_url?: string | null;
+  avatar_preview_url?: string | null;
+  avatar_turntable_url?: string | null;
+  avatar_metadata?: Record<string, unknown> | null;
+  avatar_error_message?: string | null;
+  avatar_updated_at?: string | null;
   is_active: boolean;
 };
 
@@ -17,9 +29,13 @@ type AuthStore = {
 
   login: (email: string, password: string) => Promise<void>;
   register: (
-    email: string,
-    password: string,
-    fullName?: string
+    payload: {
+      email: string;
+      password: string;
+      fullName?: string;
+      subscriptionTier?: SubscriptionTier;
+      preferredMode?: TryOnMode;
+    }
   ) => Promise<void>;
   logout: () => void;
   loadUser: () => Promise<void>;
@@ -41,9 +57,15 @@ export const useAuth = create<AuthStore>()(
         await get().loadUser();
       },
 
-      register: async (email, password, fullName) => {
-        await authApi.register(email, password, fullName);
-        await get().login(email, password);
+      register: async (payload) => {
+        await authApi.register({
+          email: payload.email,
+          password: payload.password,
+          full_name: payload.fullName,
+          subscription_tier: payload.subscriptionTier,
+          preferred_tryon_mode: payload.preferredMode,
+        });
+        await get().login(payload.email, payload.password);
       },
 
       logout: () => {

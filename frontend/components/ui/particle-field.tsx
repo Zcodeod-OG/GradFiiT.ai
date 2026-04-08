@@ -8,17 +8,22 @@ interface ParticleFieldProps {
   className?: string
 }
 
+function pseudoRandom(seed: number) {
+  const value = Math.sin(seed * 12.9898) * 43758.5453
+  return value - Math.floor(value)
+}
+
 export function ParticleField({ count = 40, className = "" }: ParticleFieldProps) {
   const particles = useMemo(() => {
     return Array.from({ length: count }, (_, i) => ({
       id: i,
-      left: `${Math.random() * 100}%`,
-      top: `${Math.random() * 100}%`,
-      size: 2 + Math.random() * 4,
-      duration: 3 + Math.random() * 5,
-      delay: Math.random() * 5,
+      left: `${pseudoRandom(i + 1) * 100}%`,
+      top: `${pseudoRandom(i + 101) * 100}%`,
+      size: 2 + pseudoRandom(i + 201) * 4,
+      duration: 3 + pseudoRandom(i + 301) * 5,
+      delay: pseudoRandom(i + 401) * 5,
       color: i % 3 === 0 ? "bg-primary/20" : i % 3 === 1 ? "bg-accent/20" : "bg-primary/10",
-      drift: -20 + Math.random() * 40,
+      drift: -20 + pseudoRandom(i + 501) * 40,
     }))
   }, [count])
 

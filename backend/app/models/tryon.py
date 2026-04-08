@@ -16,6 +16,9 @@ class TryOnStatus(str, enum.Enum):
     QUALITY_PASSED = "quality_passed"
     QUALITY_FAILED = "quality_failed"
     STAGE2_PROCESSING = "stage2_processing"
+    AVATAR_3D_GENERATING = "avatar_3d_generating"
+    GARMENT_FITTING_3D = "garment_fitting_3d"
+    MODEL_RENDERING_3D = "model_rendering_3d"
     RATING_COMPUTING = "rating_computing"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -30,6 +33,7 @@ class TryOn(Base):
     garment_id = Column(Integer, ForeignKey("garments.id"), nullable=False)
     person_image_url = Column(String, nullable=False)
     garment_image_url = Column(String, nullable=True)
+    tryon_mode = Column(String, nullable=False, default="2d")
 
     # Garment extraction
     extracted_garment_url = Column(String, nullable=True)
@@ -40,6 +44,8 @@ class TryOn(Base):
     stage1_result_url = Column(String, nullable=True)
     stage2_prediction_id = Column(String, nullable=True)
     result_image_url = Column(String, nullable=True)
+    result_model_url = Column(String, nullable=True)
+    result_turntable_url = Column(String, nullable=True)
 
     # Quality gate
     quality_gate_score = Column(Float, nullable=True)

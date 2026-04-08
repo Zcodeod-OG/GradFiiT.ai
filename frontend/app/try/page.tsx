@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useRef, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
-import { useDropzone } from "react-dropzone"
+import { useDropzone, type FileRejection } from "react-dropzone"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
+import axios from "axios"
 import {
   Upload,
   Camera,
@@ -17,14 +18,16 @@ import {
   Image as ImageIcon,
   FileImage,
   LogIn,
+  Box,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-import { uploadApi, garmentsApi, tryonApi } from "@/lib/api"
+import { uploadApi, garmentsApi, tryonApi, userApi } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { TIER_LABELS, TIER_TO_ALLOWED_MODES, type SubscriptionTier, type TryOnMode } from "@/lib/plans"
 import { ProcessingStatus } from "@/components/ProcessingStatus"
 import { ResultsModal } from "@/components/ResultsModal"
 import { MouseFollowGradient } from "@/components/ui/mouse-follow-gradient"
@@ -44,11 +47,29 @@ const ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
 
 type QualityOption = "fast" | "balanced" | "best"
 
+type QuotaSnapshot = {
+  tier: string
+  tier_label: string
+  period: string
+  limit: number | null
+  used: number
+  remaining: number | null
+}
+
 const qualityOptions = [
   { value: "fast" as QualityOption, label: "Fast", time: "30s", description: "Quick preview" },
   { value: "balanced" as QualityOption, label: "Balanced", time: "1m", description: "Best quality" },
   { value: "best" as QualityOption, label: "Best", time: "2m", description: "Highest quality" },
 ]
+
+type ApiErrorPayload = { detail?: string }
+
+const getApiErrorDetail = (error: unknown): string | undefined => {
+  if (axios.isAxiosError<ApiErrorPayload>(error)) {
+    return error.response?.data?.detail
+  }
+  return undefined
+}
 
 // Helper functions
 const formatFileSize = (bytes: number): string => {
@@ -101,7 +122,7 @@ const validateImageDimensions = async (url: string): Promise<{ valid: boolean; e
       }
     }
     return { valid: true, width, height }
-  } catch (error) {
+  } catch {
     return {
       valid: false,
       error: "Failed to load image. Please try another file.",
@@ -134,6 +155,9 @@ export default function TryOnPage() {
   const [personImage, setPersonImage] = useState<ImageInfo | null>(null)
   const [garmentImage, setGarmentImage] = useState<ImageInfo | null>(null)
   const [resultImage, setResultImage] = useState<string | null>(null)
+  const [resultModelUrl, setResultModelUrl] = useState<string | null>(null)
+  const [resultTurntableUrl, setResultTurntableUrl] = useState<string | null>(null)
+  const [tryonMode, setTryonMode] = useState<TryOnMode>("2d")
   const [quality, setQuality] = useState<QualityOption>("balanced")
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingProgress, setProcessingProgress] = useState(0)
@@ -144,21 +168,35 @@ export default function TryOnPage() {
   const [personZoom, setPersonZoom] = useState(1)
   const [garmentRotation, setGarmentRotation] = useState(0)
   const [garmentZoom, setGarmentZoom] = useState(1)
-  const [_statusMessage, setStatusMessage] = useState("")
+  const [, setStatusMessage] = useState("")
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0)
+  const [isSavingMode, setIsSavingMode] = useState(false)
+  const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshot | null>(null)
   const estimatedTimeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Auth
-  const { isAuthenticated, user, login, register, logout } = useAuth()
+  const { isAuthenticated, user, login, register, logout, loadUser } = useAuth()
   const [showLoginForm, setShowLoginForm] = useState(false)
   const [loginEmail, setLoginEmail] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
   const [loginFullName, setLoginFullName] = useState("")
   const [isRegisterMode, setIsRegisterMode] = useState(false)
   const [loginLoading, setLoginLoading] = useState(false)
+  const [registerTier, setRegisterTier] = useState<SubscriptionTier>("free_2d")
+  const [registerPreferredMode, setRegisterPreferredMode] = useState<TryOnMode>("2d")
+  const [registerAvatarFile, setRegisterAvatarFile] = useState<File | null>(null)
+  const [registerAvatarHeightCm, setRegisterAvatarHeightCm] = useState("")
+  const [registerAvatarBodyType, setRegisterAvatarBodyType] = useState("")
+  const [registerAvatarGender, setRegisterAvatarGender] = useState("")
+  const [registerAvatarNotes, setRegisterAvatarNotes] = useState("")
 
   // Chrome extension query params
   const searchParams = useSearchParams()
+
+  const currentTier = (user?.subscription_tier || "free_2d") as SubscriptionTier
+  const allowedModes = TIER_TO_ALLOWED_MODES[currentTier] || ["2d"]
+  const registerAllowedModes = TIER_TO_ALLOWED_MODES[registerTier] || ["2d"]
+  const registerHas3d = registerAllowedModes.includes("3d")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -176,7 +214,17 @@ export default function TryOnPage() {
       })
       toast.success("Garment image loaded from extension!")
     }
-  }, [searchParams])
+
+    const requestedMode = searchParams.get("mode")
+    if (requestedMode === "2d" || requestedMode === "3d") {
+      setTryonMode(requestedMode)
+      return
+    }
+
+    if (isAuthenticated && user?.preferred_tryon_mode) {
+      setTryonMode(user.preferred_tryon_mode)
+    }
+  }, [searchParams, garmentImage, isAuthenticated, user?.preferred_tryon_mode])
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -196,17 +244,68 @@ export default function TryOnPage() {
     setLoginLoading(true)
     try {
       if (isRegisterMode) {
-        await register(loginEmail, loginPassword, loginFullName || undefined)
+        if (registerPreferredMode === "3d" && !registerAvatarFile) {
+          toast.error("Please upload a person image for 3D avatar setup")
+          setLoginLoading(false)
+          return
+        }
+
+        await register({
+          email: loginEmail,
+          password: loginPassword,
+          fullName: loginFullName || undefined,
+          subscriptionTier: registerTier,
+          preferredMode: registerPreferredMode,
+        })
+
+        if (registerPreferredMode === "3d" && registerAvatarFile) {
+          const uploaded = await uploadApi.uploadImage(registerAvatarFile)
+          await userApi.buildAvatar({
+            person_image_url: uploaded.data.url,
+            quality: "best",
+            height_cm: registerAvatarHeightCm ? Number(registerAvatarHeightCm) : undefined,
+            body_type: registerAvatarBodyType || undefined,
+            gender: registerAvatarGender || undefined,
+            notes: registerAvatarNotes || undefined,
+          })
+          await loadUser()
+          toast.success("3D avatar created")
+        }
+
         toast.success("Account created! Welcome!")
       } else {
         await login(loginEmail, loginPassword)
         toast.success("Logged in!")
       }
       setShowLoginForm(false)
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Authentication failed")
+    } catch (err: unknown) {
+      toast.error(getApiErrorDetail(err) || "Authentication failed")
     } finally {
       setLoginLoading(false)
+    }
+  }
+
+  const handleModeSelection = async (mode: TryOnMode) => {
+    if (!isAuthenticated) {
+      setShowLoginForm(true)
+      toast.info("Log in to choose 2D or 3D mode")
+      return
+    }
+
+    if (!allowedModes.includes(mode)) {
+      toast.error(`Your ${TIER_LABELS[currentTier]} plan does not include ${mode.toUpperCase()} mode`)
+      return
+    }
+
+    setTryonMode(mode)
+    setIsSavingMode(true)
+    try {
+      await userApi.updatePreferences({ preferred_tryon_mode: mode })
+      toast.success(`Switched to ${mode.toUpperCase()} mode`)
+    } catch (error: unknown) {
+      toast.error(getApiErrorDetail(error) || "Could not save mode preference")
+    } finally {
+      setIsSavingMode(false)
     }
   }
 
@@ -257,7 +356,7 @@ export default function TryOnPage() {
 
   // Person image dropzone
   const onDropPerson = useCallback(
-    (acceptedFiles: File[], rejectedFiles: any[]) => {
+    (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       if (rejectedFiles.length > 0) {
         const rejection = rejectedFiles[0]
         if (rejection.errors[0]?.code === "file-too-large") {
@@ -288,7 +387,7 @@ export default function TryOnPage() {
 
   // Garment image dropzone
   const onDropGarment = useCallback(
-    (acceptedFiles: File[], rejectedFiles: any[]) => {
+    (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       if (rejectedFiles.length > 0) {
         const rejection = rejectedFiles[0]
         if (rejection.errors[0]?.code === "file-too-large") {
@@ -377,15 +476,26 @@ export default function TryOnPage() {
 
   // Generate try-on
   const handleGenerate = async () => {
-    if (!personImage || !garmentImage) {
-      toast.error("Please upload both person and garment images")
-      setError("Please upload both person and garment images")
+    const canReuseAvatar = tryonMode === "3d" && user?.avatar_status === "ready"
+    const needsPersonImage = tryonMode === "2d" || !canReuseAvatar
+
+    if (!garmentImage || (needsPersonImage && !personImage)) {
+      const message = needsPersonImage
+        ? "Please upload both person and garment images"
+        : "Please upload a garment image"
+      toast.error(message)
+      setError(message)
       return
     }
 
     if (!isAuthenticated) {
       setShowLoginForm(true)
       toast.error("Please log in to generate try-ons")
+      return
+    }
+
+    if (!allowedModes.includes(tryonMode)) {
+      toast.error(`Your ${TIER_LABELS[currentTier]} plan does not include ${tryonMode.toUpperCase()} mode`)
       return
     }
 
@@ -408,11 +518,14 @@ export default function TryOnPage() {
     setStatusMessage("Uploading images...")
 
     try {
-      // Step 1: Upload person image
+      // Step 1: Upload person image when required.
       setCurrentStep(0)
       setProcessingProgress(5)
-      const personUpload = await uploadApi.uploadImage(personImage.file)
-      const personImageUrl = personUpload.data.url
+      let personImageUrl: string | undefined = undefined
+      if (needsPersonImage && personImage) {
+        const personUpload = await uploadApi.uploadImage(personImage.file)
+        personImageUrl = personUpload.data.url
+      }
 
       // Step 2: Upload garment and create garment record
       setCurrentStep(1)
@@ -432,8 +545,13 @@ export default function TryOnPage() {
       const generateResponse = await tryonApi.generate(
         garmentRecord.data.id,
         personImageUrl,
-        quality
+        quality,
+        tryonMode
       )
+      const initialQuota = generateResponse?.data?.data?.quota
+      if (initialQuota) {
+        setQuotaSnapshot(initialQuota)
+      }
       const tryonId = generateResponse.data.data.tryon_id
 
       // Step 4: Poll for status
@@ -456,6 +574,8 @@ export default function TryOnPage() {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
             if (estimatedTimeIntervalRef.current) clearInterval(estimatedTimeIntervalRef.current)
             setResultImage(statusData.result_image_url)
+            setResultModelUrl(statusData.result_model_url || null)
+            setResultTurntableUrl(statusData.result_turntable_url || null)
             setShowResult(true)
             setIsProcessing(false)
             setEstimatedTimeRemaining(0)
@@ -468,7 +588,7 @@ export default function TryOnPage() {
             setEstimatedTimeRemaining(0)
             toast.error("Generation failed")
           }
-        } catch (err) {
+        } catch {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
           if (estimatedTimeIntervalRef.current) clearInterval(estimatedTimeIntervalRef.current)
           setError("Lost connection to server")
@@ -477,8 +597,8 @@ export default function TryOnPage() {
         }
       }, 3000)
 
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to start generation")
+    } catch (err: unknown) {
+      setError(getApiErrorDetail(err) || "Failed to start generation")
       setIsProcessing(false)
       setEstimatedTimeRemaining(0)
       if (estimatedTimeIntervalRef.current) clearInterval(estimatedTimeIntervalRef.current)
@@ -537,7 +657,26 @@ export default function TryOnPage() {
         </motion.div>
 
         {/* Auth Bar */}
-        <div className="flex items-center justify-end gap-3 mb-6">
+        <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+            <Box className="size-4 text-primary" />
+            <span className="text-xs text-muted-foreground">{TIER_LABELS[currentTier]}</span>
+            <div className="flex items-center gap-1">
+              {(["2d", "3d"] as TryOnMode[]).map((mode) => (
+                <Button
+                  key={mode}
+                  size="sm"
+                  variant={tryonMode === mode ? "default" : "outline"}
+                  disabled={!allowedModes.includes(mode) || isSavingMode}
+                  onClick={() => void handleModeSelection(mode)}
+                  className="h-7 px-2 uppercase"
+                >
+                  {mode}
+                </Button>
+              ))}
+            </div>
+          </div>
+
           {isAuthenticated ? (
             <div className="flex items-center gap-3">
               <span className="text-sm text-muted-foreground">
@@ -554,6 +693,12 @@ export default function TryOnPage() {
             </Button>
           )}
         </div>
+
+        {quotaSnapshot && quotaSnapshot.limit !== null ? (
+          <div className="mb-6 text-xs text-muted-foreground">
+            Usage: {quotaSnapshot.used}/{quotaSnapshot.limit} this {quotaSnapshot.period}. Remaining {quotaSnapshot.remaining}.
+          </div>
+        ) : null}
 
         {/* Error Message */}
         <AnimatePresence>
@@ -1028,9 +1173,15 @@ export default function TryOnPage() {
                     Generating...
                   </>
                 ) : (
-                  "Generate Try-On"
+                  tryonMode === "3d" ? "Generate 3D Try-On" : "Generate 2D Try-On"
                 )}
               </Button>
+
+              <p className="text-xs text-muted-foreground">
+                {tryonMode === "3d"
+                  ? "3D mode uses Tripo AI mannequin generation with garment fitting and 360 output."
+                  : "2D mode uses IDM-VTON pipeline for fast photorealistic try-ons."}
+              </p>
 
               {/* Processing Status */}
               <AnimatePresence>
@@ -1061,10 +1212,15 @@ export default function TryOnPage() {
         onOpenChange={setShowResult}
         beforeImage={personImage?.url || ""}
         afterImage={resultImage || ""}
+        resultMode={tryonMode}
+        modelUrl={resultModelUrl || undefined}
+        turntableUrl={resultTurntableUrl || undefined}
         onTryAnother={() => {
           handleClear("person")
           handleClear("garment")
           setResultImage(null)
+          setResultModelUrl(null)
+          setResultTurntableUrl(null)
         }}
         isAuthenticated={isAuthenticated}
         onLogin={() => setShowLoginForm(true)}
@@ -1077,17 +1233,120 @@ export default function TryOnPage() {
           </DialogHeader>
           <form onSubmit={handleAuth} className="space-y-4">
             {isRegisterMode && (
-              <div>
-                <Label htmlFor="fullName">Full Name</Label>
-                <input
-                  id="fullName"
-                  type="text"
-                  value={loginFullName}
-                  onChange={(e) => setLoginFullName(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                  placeholder="John Doe"
-                />
-              </div>
+              <>
+                <div>
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <input
+                    id="fullName"
+                    type="text"
+                    value={loginFullName}
+                    onChange={(e) => setLoginFullName(e.target.value)}
+                    className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                    placeholder="John Doe"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="signupTier">Plan Tier</Label>
+                  <select
+                    id="signupTier"
+                    value={registerTier}
+                    onChange={(e) => {
+                      const tier = e.target.value as SubscriptionTier
+                      setRegisterTier(tier)
+                      const nextModes = TIER_TO_ALLOWED_MODES[tier] || ["2d"]
+                      if (!nextModes.includes(registerPreferredMode)) {
+                        setRegisterPreferredMode(nextModes[0])
+                      }
+                    }}
+                    className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                  >
+                    {(Object.keys(TIER_LABELS) as SubscriptionTier[]).map((tier) => (
+                      <option key={tier} value={tier}>
+                        {TIER_LABELS[tier]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <Label htmlFor="signupMode">Preferred Try-On Mode</Label>
+                  <select
+                    id="signupMode"
+                    value={registerPreferredMode}
+                    onChange={(e) => setRegisterPreferredMode(e.target.value as TryOnMode)}
+                    className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                  >
+                    {registerAllowedModes.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {mode.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {registerHas3d && registerPreferredMode === "3d" ? (
+                  <div className="space-y-2 rounded-md border border-border p-3">
+                    <p className="text-sm font-medium">3D Avatar Setup</p>
+                    <div>
+                      <Label htmlFor="signupAvatarImage">Person Image</Label>
+                      <input
+                        id="signupAvatarImage"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(e) => setRegisterAvatarFile(e.target.files?.[0] ?? null)}
+                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="signupAvatarHeight">Height (cm)</Label>
+                      <input
+                        id="signupAvatarHeight"
+                        type="number"
+                        min="100"
+                        max="250"
+                        value={registerAvatarHeightCm}
+                        onChange={(e) => setRegisterAvatarHeightCm(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                        placeholder="170"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="signupAvatarBodyType">Body Type</Label>
+                      <input
+                        id="signupAvatarBodyType"
+                        type="text"
+                        value={registerAvatarBodyType}
+                        onChange={(e) => setRegisterAvatarBodyType(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                        placeholder="athletic / slim / regular"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="signupAvatarGender">Gender</Label>
+                      <input
+                        id="signupAvatarGender"
+                        type="text"
+                        value={registerAvatarGender}
+                        onChange={(e) => setRegisterAvatarGender(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                        placeholder="woman / man / non-binary"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="signupAvatarNotes">Fit Notes</Label>
+                      <input
+                        id="signupAvatarNotes"
+                        type="text"
+                        value={registerAvatarNotes}
+                        onChange={(e) => setRegisterAvatarNotes(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                        placeholder="broad shoulders, longer torso, etc."
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </>
             )}
             <div>
               <Label htmlFor="email">Email</Label>

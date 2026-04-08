@@ -11,14 +11,35 @@ const CONFIG = {
     tryOnHistory: 'tryon_history',
     userToken: 'tryon_user_token',
     userTier: 'tryon_user_tier',
+    userMode: 'tryon_user_mode',
   },
-  maxFreeTriesPerDay: 50,
+  maxFreeTriesPerDay: 4,
   maxRecentTryOns: 3, // Show last 3 in popup
 };
 
 // State
 let statsInterval = null;
-let userTier = 'free'; // free, pro, enterprise
+let userTier = 'free_2d';
+let userMode = '2d';
+let userQuota = null;
+
+function getTierLimit(tier, mode) {
+  switch (tier) {
+    case 'free_3d':
+      return mode === '3d' ? 2 : 0;
+    case 'premium_2d':
+      return mode === '2d' ? 195 : 0;
+    case 'premium_3d':
+      return mode === '3d' ? 180 : 0;
+    case 'ultra':
+      return 365;
+    case 'business':
+      return 9999;
+    case 'free_2d':
+    default:
+      return mode === '2d' ? 4 : 0;
+  }
+}
 
 /**
  * Format time ago string
@@ -72,24 +93,31 @@ function updateStatsDisplay(dailyCount, totalTryOns) {
 
   if (!tryonCountEl || !progressFillEl) return;
 
-  // Get user's daily limit based on tier
-  const dailyLimit = getUserDailyLimit();
+  let dailyLimit = getUserDailyLimit();
+  let usedCount = dailyCount;
+  let periodLabel = 'today';
+
+  if (userQuota && userQuota.limit !== null) {
+    dailyLimit = userQuota.limit;
+    usedCount = typeof userQuota.used === 'number' ? userQuota.used : dailyCount;
+    periodLabel = userQuota.period || 'period';
+  }
 
   // Update count display
-  tryonCountEl.textContent = `${dailyCount}/${dailyLimit}`;
+  tryonCountEl.textContent = `${usedCount}/${dailyLimit}`;
 
   // Update progress bar
-  const percentage = Math.min((dailyCount / dailyLimit) * 100, 100);
+  const percentage = dailyLimit > 0 ? Math.min((usedCount / dailyLimit) * 100, 100) : 0;
   progressFillEl.style.width = `${percentage}%`;
 
   // Update hint text
-  const remaining = Math.max(0, dailyLimit - dailyCount);
+  const remaining = Math.max(0, dailyLimit - usedCount);
   if (statsHintEl) {
     if (remaining === 0) {
-      statsHintEl.textContent = 'Daily limit reached';
+      statsHintEl.textContent = `${periodLabel} limit reached`;
       statsHintEl.style.color = '#ef4444';
     } else {
-      statsHintEl.textContent = `${remaining} try-ons remaining today`;
+      statsHintEl.textContent = `${remaining} try-ons remaining this ${periodLabel}`;
       statsHintEl.style.color = '#6b7280';
     }
   }
@@ -108,14 +136,7 @@ function updateStatsDisplay(dailyCount, totalTryOns) {
  * Get user's daily limit based on tier
  */
 function getUserDailyLimit() {
-  switch (userTier) {
-    case 'pro':
-      return 500;
-    case 'enterprise':
-      return Infinity;
-    default:
-      return CONFIG.maxFreeTriesPerDay;
-  }
+  return getTierLimit(userTier, userMode);
 }
 
 /**
@@ -222,8 +243,10 @@ async function fetchUserTier() {
     const token = result[CONFIG.storageKeys.userToken];
 
     if (!token) {
-      userTier = 'free';
-      return 'free';
+      userTier = 'free_2d';
+      userMode = '2d';
+      userQuota = null;
+      return userTier;
     }
 
     // Fetch tier from API
@@ -240,11 +263,14 @@ async function fetchUserTier() {
     }
 
     const data = await response.json();
-    userTier = data.tier || 'free';
+    userTier = data.tier || (data.data && data.data.tier) || 'free_2d';
+    userMode = data.preferred_mode || (data.data && data.data.preferred_mode) || '2d';
+    userQuota = data.quota || (data.data && data.data.quota) || null;
 
     // Cache tier in storage
     await chrome.storage.local.set({
       [CONFIG.storageKeys.userTier]: userTier,
+      [CONFIG.storageKeys.userMode]: userMode,
     });
 
     return userTier;
@@ -252,7 +278,9 @@ async function fetchUserTier() {
     console.error('Error fetching user tier:', error);
     // Fallback to cached tier or free
     const cached = await chrome.storage.local.get(CONFIG.storageKeys.userTier);
-    userTier = cached[CONFIG.storageKeys.userTier] || 'free';
+    userTier = cached[CONFIG.storageKeys.userTier] || 'free_2d';
+    userMode = cached[CONFIG.storageKeys.userMode] || '2d';
+    userQuota = null;
     return userTier;
   }
 }
@@ -334,7 +362,7 @@ function handleSettings() {
  */
 function handlePricing() {
   chrome.tabs.create({
-    url: `${CONFIG.appUrl}/pricing`,
+    url: `${CONFIG.appUrl}/#pricing`,
     active: true,
   });
 }
@@ -493,7 +521,7 @@ function updateUpgradeSection() {
   const upgradeSection = document.querySelector('.upgrade-section');
   if (!upgradeSection) return;
 
-  if (userTier === 'pro' || userTier === 'enterprise') {
+  if (userTier !== 'free_2d' && userTier !== 'free_3d') {
     // Hide upgrade section for paid users
     upgradeSection.style.display = 'none';
   } else {

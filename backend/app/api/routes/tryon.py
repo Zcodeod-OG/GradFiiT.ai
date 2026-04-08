@@ -7,6 +7,8 @@ SDXL+ControlNet Refinement (conditional) → Final Rating
 
 import logging
 import threading
+import time
+import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Any
 
@@ -18,14 +20,100 @@ from app.database import get_db
 from app.models.user import User
 from app.models.garment import Garment
 from app.models.tryon import TryOn, TryOnStatus
-from app.schemas.tryon import TryOnCreate, TryOnResponse, TryOnStatusResponse
-from app.api.deps import get_current_active_user
+from app.schemas.tryon import (
+    TryOnCreate,
+    TryOnPreviewCreate,
+    TryOnPreviewResponse,
+    TryOnResponse,
+    TryOnStatusResponse,
+)
+from app.api.deps import get_current_active_user, get_optional_active_user
 from app.services.tasks import process_tryon_task
 from app.services.tryon_runner import run_tryon_pipeline
+from app.services.pipeline import get_pipeline_service
+from app.services.subscription import enforce_tryon_quota, get_usage_snapshot
+from app.services.yolo_pose import get_yolo_pose_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tryon", tags=["Virtual Try-On"])
+_QUICK_PREVIEW_CACHE: dict[str, Dict[str, Any]] = {}
+
+
+def _is_http_url(url: str | None) -> bool:
+    return bool(url) and (url.startswith("http://") or url.startswith("https://"))
+
+
+def _preview_cache_key(
+    garment_image_url: str,
+    person_image_url: str,
+    garment_description: str,
+    quality: str,
+    mode: str,
+    use_yolo11_pose: bool,
+) -> str:
+    raw = "|".join(
+        [
+            garment_image_url.strip(),
+            person_image_url.strip(),
+            (garment_description or "a garment").strip(),
+            quality.strip(),
+            mode.strip(),
+            str(use_yolo11_pose),
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _get_cached_preview(key: str) -> Dict[str, Any] | None:
+    entry = _QUICK_PREVIEW_CACHE.get(key)
+    if not entry:
+        return None
+
+    if (time.time() - entry["created_at"]) > settings.QUICK_PREVIEW_CACHE_TTL_SECONDS:
+        _QUICK_PREVIEW_CACHE.pop(key, None)
+        return None
+
+    return entry["payload"]
+
+
+def _set_cached_preview(key: str, payload: Dict[str, Any]) -> None:
+    _QUICK_PREVIEW_CACHE[key] = {
+        "created_at": time.time(),
+        "payload": payload,
+    }
+
+    # Keep memory bounded for long-running API workers.
+    if len(_QUICK_PREVIEW_CACHE) > 200:
+        oldest_key = min(
+            _QUICK_PREVIEW_CACHE,
+            key=lambda k: _QUICK_PREVIEW_CACHE[k]["created_at"],
+        )
+        _QUICK_PREVIEW_CACHE.pop(oldest_key, None)
+
+
+def _resolve_preview_person_image(
+    data: TryOnPreviewCreate,
+    current_user: User | None,
+    db: Session,
+) -> tuple[str, bool, bool]:
+    # Explicit request image has top priority.
+    if _is_http_url(data.person_image_url):
+        return data.person_image_url.strip(), True, False
+
+    # If authenticated, use the user's most recent try-on person image.
+    if current_user:
+        recent = (
+            db.query(TryOn)
+            .filter(TryOn.user_id == current_user.id)
+            .order_by(TryOn.created_at.desc())
+            .first()
+        )
+        if recent and _is_http_url(recent.person_image_url):
+            return recent.person_image_url.strip(), True, False
+
+    # Fall back to configured mannequin/model image.
+    return settings.QUICK_PREVIEW_DEFAULT_PERSON_IMAGE_URL, False, True
 
 
 def _run_pipeline_in_background(
@@ -35,6 +123,7 @@ def _run_pipeline_in_background(
     garment_description: str,
     quality: str,
     preprocessed_garment_url: str | None = None,
+    mode: str = "2d",
 ):
     """Thread fallback path when Celery dispatch is unavailable."""
     run_tryon_pipeline(
@@ -44,6 +133,7 @@ def _run_pipeline_in_background(
         garment_description=garment_description,
         quality=quality,
         preprocessed_garment_url=preprocessed_garment_url,
+        mode=mode,
     )
 
 
@@ -87,6 +177,27 @@ def generate_tryon(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """Start a virtual try-on generation."""
+    requested_mode = (data.mode or current_user.preferred_tryon_mode or "2d").lower().strip()
+    quota_snapshot = enforce_tryon_quota(db=db, user=current_user, requested_mode=requested_mode)
+
+    person_image_url = (data.person_image_url or "").strip()
+    if requested_mode == "3d":
+        if not person_image_url and _is_http_url(current_user.avatar_source_image_url):
+            person_image_url = current_user.avatar_source_image_url.strip()
+        if not person_image_url and _is_http_url(current_user.avatar_preview_url):
+            person_image_url = current_user.avatar_preview_url.strip()
+        if not _is_http_url(person_image_url):
+            raise HTTPException(
+                status_code=422,
+                detail="3D try-on requires a person image URL or a ready avatar profile",
+            )
+    else:
+        if not _is_http_url(person_image_url):
+            raise HTTPException(
+                status_code=422,
+                detail="2D try-on requires a valid person_image_url",
+            )
+
     # Validate garment exists and belongs to user
     garment = (
         db.query(Garment)
@@ -115,6 +226,7 @@ def generate_tryon(
             .filter(
                 TryOn.user_id == current_user.id,
                 TryOn.idempotency_key == idempotency_key,
+                TryOn.tryon_mode == requested_mode,
             )
             .order_by(TryOn.id.desc())
             .first()
@@ -129,9 +241,11 @@ def generate_tryon(
                 "data": {
                     "tryon_id": existing.id,
                     "status": existing.status.value,
-                    "estimated_time": "30-120 seconds",
+                    "estimated_time": "90-240 seconds" if existing.tryon_mode == "3d" else "30-120 seconds",
                     "execution_mode": "existing",
                     "idempotency_key": idempotency_key,
+                    "mode": existing.tryon_mode,
+                    "quota": quota_snapshot,
                 },
             }
 
@@ -139,16 +253,19 @@ def generate_tryon(
     tryon = TryOn(
         user_id=current_user.id,
         garment_id=garment.id,
-        person_image_url=data.person_image_url,
+        person_image_url=person_image_url,
         garment_image_url=garment_image_url,
+        tryon_mode=requested_mode,
         status=TryOnStatus.QUEUED,
         lifecycle_status="queued",
         idempotency_key=idempotency_key,
         queue_enqueued_at=_utc_now(),
         pipeline_metadata={
+            "mode": requested_mode,
             "quality_requested": data.quality,
             "quality_effective": effective_quality,
             "queue_mode": "celery",
+            "quota": quota_snapshot,
         },
     )
     db.add(tryon)
@@ -161,11 +278,12 @@ def generate_tryon(
         try:
             async_result = process_tryon_task.delay(
                 tryon.id,
-                data.person_image_url,
+                person_image_url,
                 garment_image_url,
                 garment_description,
                 effective_quality,
                 preprocessed_garment_url,
+                requested_mode,
             )
             tryon.worker_task_id = async_result.id
             db.commit()
@@ -206,11 +324,12 @@ def generate_tryon(
             target=_run_pipeline_in_background,
             args=(
                 tryon.id,
-                data.person_image_url,
+                person_image_url,
                 garment_image_url,
                 garment_description,
                 effective_quality,
                 preprocessed_garment_url,
+                requested_mode,
             ),
             daemon=True,
         )
@@ -221,12 +340,97 @@ def generate_tryon(
         "data": {
             "tryon_id": tryon.id,
             "status": tryon.status.value,
-            "estimated_time": "30-120 seconds",
+            "estimated_time": "90-240 seconds" if requested_mode == "3d" else "30-120 seconds",
             "execution_mode": execution_mode,
             "idempotency_key": idempotency_key,
             "quality_lane": effective_quality,
+            "mode": requested_mode,
+            "quota": quota_snapshot,
         },
     }
+
+
+@router.post("/preview")
+def generate_quick_preview(
+    data: TryOnPreviewCreate,
+    current_user: User | None = Depends(get_optional_active_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Generate a fast quick-preview image for extension sidebar usage.
+
+    Uses Stage 1 (IDM-VTON) only for low-latency preview output and supports
+    optional user personalization when auth token is provided.
+    """
+    if not _is_http_url(data.garment_image_url):
+        raise HTTPException(status_code=400, detail="garment_image_url must be a valid http(s) URL")
+
+    person_image_url, personalized, fallback_model_used = _resolve_preview_person_image(
+        data=data,
+        current_user=current_user,
+        db=db,
+    )
+    quality = (data.quality or "fast").lower().strip()
+    if quality not in {"fast", "balanced", "best"}:
+        quality = "fast"
+    mode = (data.mode or "2d").lower().strip()
+    if mode not in {"2d", "3d"}:
+        mode = "2d"
+    use_yolo11_pose = bool(data.use_yolo11_pose and mode == "2d")
+
+    pose_metadata = None
+    if use_yolo11_pose:
+        pose_service = get_yolo_pose_service()
+        pose_metadata = pose_service.estimate_pose(person_image_url)
+    pose_engine = "yolo11_pose" if pose_metadata else "none"
+
+    cache_key = _preview_cache_key(
+        garment_image_url=data.garment_image_url,
+        person_image_url=person_image_url,
+        garment_description=data.garment_description,
+        quality=quality,
+        mode=mode,
+        use_yolo11_pose=use_yolo11_pose,
+    )
+    cached_payload = _get_cached_preview(cache_key)
+    if cached_payload:
+        payload = dict(cached_payload)
+        payload["cached"] = True
+        return {"success": True, "data": payload}
+
+    started = time.perf_counter()
+    try:
+        pipeline = get_pipeline_service()
+        stage1 = pipeline.run_stage1_idm_vton(
+            person_image_url=person_image_url,
+            garment_image_url=data.garment_image_url,
+            garment_description=data.garment_description or "a garment",
+        )
+        result_image_url = stage1.get("output_url")
+        if not _is_http_url(result_image_url):
+            raise RuntimeError("No preview image returned")
+
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        response_payload = TryOnPreviewResponse(
+            result_image_url=result_image_url,
+            person_image_url_used=person_image_url,
+            garment_image_url=data.garment_image_url,
+            quality="fast",
+            mode=mode,
+            pose_engine=pose_engine,
+            processing_time_ms=elapsed_ms,
+            cached=False,
+            personalized=personalized,
+            fallback_model_used=fallback_model_used,
+        ).model_dump()
+
+        _set_cached_preview(cache_key, response_payload)
+        return {"success": True, "data": response_payload}
+    except Exception as exc:
+        logger.error("Quick preview generation failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Quick preview generation failed",
+        )
 
 
 # ── Progress and label maps for the 5-stage pipeline ────────
@@ -242,6 +446,9 @@ PROGRESS_MAP = {
     TryOnStatus.QUALITY_PASSED: 60,
     TryOnStatus.QUALITY_FAILED: 60,
     TryOnStatus.STAGE2_PROCESSING: 75,
+    TryOnStatus.AVATAR_3D_GENERATING: 35,
+    TryOnStatus.GARMENT_FITTING_3D: 65,
+    TryOnStatus.MODEL_RENDERING_3D: 90,
     TryOnStatus.RATING_COMPUTING: 90,
     TryOnStatus.COMPLETED: 100,
     TryOnStatus.FAILED: 0,
@@ -259,6 +466,9 @@ STAGE_LABEL_MAP = {
     TryOnStatus.QUALITY_PASSED: "Quality check passed!",
     TryOnStatus.QUALITY_FAILED: "Improving result with AI refinement...",
     TryOnStatus.STAGE2_PROCESSING: "Refining with SDXL + ControlNet...",
+    TryOnStatus.AVATAR_3D_GENERATING: "Building your 3D mannequin...",
+    TryOnStatus.GARMENT_FITTING_3D: "Fitting garment on 3D mannequin...",
+    TryOnStatus.MODEL_RENDERING_3D: "Rendering 360° 3D output...",
     TryOnStatus.RATING_COMPUTING: "Computing final quality rating...",
     TryOnStatus.COMPLETED: "Complete!",
     TryOnStatus.FAILED: "Failed",
@@ -286,11 +496,14 @@ def get_tryon_status(
         "data": {
             "tryon_id": tryon.id,
             "status": tryon.status.value,
+            "tryon_mode": tryon.tryon_mode,
             "progress": PROGRESS_MAP.get(tryon.status, 0),
             "current_stage": STAGE_LABEL_MAP.get(tryon.status, "Unknown"),
             "extracted_garment_url": tryon.extracted_garment_url,
             "stage1_result_url": tryon.stage1_result_url,
             "result_image_url": tryon.result_image_url,
+            "result_model_url": tryon.result_model_url,
+            "result_turntable_url": tryon.result_turntable_url,
             "quality_gate_score": tryon.quality_gate_score,
             "quality_gate_passed": tryon.quality_gate_passed,
             "rating_score": tryon.rating_score,
@@ -335,6 +548,11 @@ def list_tryons(
     limit: int = 20,
 ) -> Dict[str, Any]:
     """List user's try-ons."""
+    quota_snapshot = get_usage_snapshot(
+        db=db,
+        user=current_user,
+        requested_mode=current_user.preferred_tryon_mode,
+    )
     tryons = (
         db.query(TryOn)
         .filter(TryOn.user_id == current_user.id)
@@ -350,5 +568,6 @@ def list_tryons(
             "total": len(tryons),
             "skip": skip,
             "limit": limit,
+            "quota": quota_snapshot,
         },
     }

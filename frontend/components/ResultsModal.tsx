@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import ReactCompareImage from "react-compare-image"
+import Script from "next/script"
 import {
   X,
   Download,
@@ -35,13 +36,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { cn } from "@/lib/utils"
 
 type ResultsModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   beforeImage: string
   afterImage: string
+  resultMode?: "2d" | "3d"
+  modelUrl?: string
+  turntableUrl?: string
   onTryAnother?: () => void
   onSaveToWardrobe?: () => void
   isAuthenticated?: boolean
@@ -55,6 +58,9 @@ export function ResultsModal({
   onOpenChange,
   beforeImage,
   afterImage,
+  resultMode = "2d",
+  modelUrl,
+  turntableUrl,
   onTryAnother,
   onSaveToWardrobe,
   isAuthenticated = false,
@@ -157,7 +163,7 @@ export function ResultsModal({
 
       if (platform === "instagram") {
         // Copy image to clipboard or provide instructions
-        if (navigator.clipboard && navigator.clipboard.write) {
+        if (navigator.clipboard?.writeText) {
           navigator.clipboard.writeText(afterImage).then(() => {
             alert("Image URL copied to clipboard! Paste it in Instagram.")
           })
@@ -203,7 +209,7 @@ export function ResultsModal({
             >
               <DialogHeader>
                 <DialogTitle className="text-2xl font-bold">
-                  Your Try-On Result
+                  {resultMode === "3d" ? "Your 3D Try-On Result" : "Your Try-On Result"}
                 </DialogTitle>
               </DialogHeader>
               <Button
@@ -220,35 +226,88 @@ export function ResultsModal({
             {/* Main Content */}
             <div className="flex-1 overflow-auto">
               <div className="relative w-full h-full min-h-[500px] bg-muted/30">
-                {/* Before/After Comparison */}
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.3 }}
-                  className="relative w-full h-full min-h-[500px] max-h-[calc(95vh-200px)]"
-                >
-                  <ReactCompareImage
-                    leftImage={beforeImage}
-                    rightImage={afterImage}
-                    leftImageLabel="Before"
-                    rightImageLabel="After"
-                    sliderLineColor="rgb(139, 92, 246)"
-                    sliderLineWidth={2}
-                  />
-
-                  {/* Keyboard navigation hints */}
+                {resultMode === "3d" ? (
                   <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 1 }}
-                    className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-background/80 backdrop-blur-sm rounded-full px-4 py-2 flex items-center gap-2 text-xs text-muted-foreground pointer-events-none"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.3 }}
+                    className="grid gap-4 p-4 md:grid-cols-2"
                   >
-                    <ChevronLeft className="size-3" />
-                    <span>Drag slider to compare • Press ESC to close</span>
-                    <ChevronRight className="size-3" />
+                    <Script
+                      src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"
+                      strategy="afterInteractive"
+                    />
+                    <div className="rounded-xl border bg-background p-3">
+                      <p className="mb-2 text-sm font-medium">360 Mannequin Viewer</p>
+                      {modelUrl ? (
+                        // @ts-expect-error Custom element provided by @google/model-viewer script.
+                        <model-viewer
+                          src={modelUrl}
+                          camera-controls
+                          auto-rotate
+                          auto-rotate-delay="0"
+                          shadow-intensity="1"
+                          exposure="1"
+                          style={{ width: "100%", height: "420px", background: "#0b1020", borderRadius: "12px" }}
+                        />
+                      ) : (
+                        <div className="flex h-[420px] items-center justify-center rounded-lg bg-muted text-sm text-muted-foreground">
+                          3D model URL not available yet.
+                        </div>
+                      )}
+                      {turntableUrl ? (
+                        <a
+                          href={turntableUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-block text-xs text-primary hover:underline"
+                        >
+                          Open dedicated 360 turntable
+                        </a>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-xl border bg-background p-3">
+                      <p className="mb-2 text-sm font-medium">Rendered Fit Preview</p>
+                      {afterImage ? (
+                        <img src={afterImage} alt="3D try-on preview" className="h-[420px] w-full rounded-lg object-cover" />
+                      ) : (
+                        <div className="flex h-[420px] items-center justify-center rounded-lg bg-muted text-sm text-muted-foreground">
+                          Preview image not available.
+                        </div>
+                      )}
+                    </div>
                   </motion.div>
-                </motion.div>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.3 }}
+                    className="relative w-full h-full min-h-[500px] max-h-[calc(95vh-200px)]"
+                  >
+                    <ReactCompareImage
+                      leftImage={beforeImage}
+                      rightImage={afterImage}
+                      leftImageLabel="Before"
+                      rightImageLabel="After"
+                      sliderLineColor="rgb(139, 92, 246)"
+                      sliderLineWidth={2}
+                    />
+
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 1 }}
+                      className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-background/80 backdrop-blur-sm rounded-full px-4 py-2 flex items-center gap-2 text-xs text-muted-foreground pointer-events-none"
+                    >
+                      <ChevronLeft className="size-3" />
+                      <span>Drag slider to compare • Press ESC to close</span>
+                      <ChevronRight className="size-3" />
+                    </motion.div>
+                  </motion.div>
+                )}
               </div>
             </div>
 

@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { SubscriptionTier, TryOnMode } from "@/lib/plans";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -22,8 +23,13 @@ api.interceptors.request.use((config) => {
 
 // Auth API
 export const authApi = {
-  register: (email: string, password: string, fullName?: string) =>
-    api.post("/api/auth/register", { email, password, full_name: fullName }),
+  register: (payload: {
+    email: string;
+    password: string;
+    full_name?: string;
+    subscription_tier?: SubscriptionTier;
+    preferred_tryon_mode?: TryOnMode;
+  }) => api.post("/api/auth/register", payload),
 
   login: (email: string, password: string) => {
     const formData = new URLSearchParams();
@@ -35,6 +41,25 @@ export const authApi = {
   },
 
   getMe: () => api.get("/api/auth/me"),
+};
+
+export const userApi = {
+  getTier: () => api.get("/api/user/tier"),
+  getAvatarStatus: () => api.get("/api/user/avatar/status"),
+  updatePreferences: (data: {
+    preferred_tryon_mode?: TryOnMode;
+    subscription_tier?: SubscriptionTier;
+  }) => api.patch("/api/user/preferences", data),
+  buildAvatar: (data: {
+    person_image_url: string;
+    quality?: "fast" | "balanced" | "best";
+    height_cm?: number;
+    body_type?: string;
+    gender?: string;
+    fit_preference?: string;
+    notes?: string;
+    force_rebuild?: boolean;
+  }) => api.post("/api/user/avatar/build", data),
 };
 
 // Upload API
@@ -74,13 +99,15 @@ export const garmentsApi = {
 export const tryonApi = {
   generate: (
     garmentId: number,
-    personImageUrl: string,
-    quality: string = "balanced"
+    personImageUrl: string | undefined,
+    quality: string = "balanced",
+    mode: TryOnMode = "2d"
   ) =>
     api.post("/api/tryon/generate", {
       garment_id: garmentId,
       person_image_url: personImageUrl,
       quality,
+      mode,
     }),
 
   getStatus: (tryonId: number) => api.get(`/api/tryon/status/${tryonId}`),

@@ -6,8 +6,32 @@ from app.models.tryon import TryOnStatus
 
 class TryOnCreate(BaseModel):
     garment_id: int
-    person_image_url: str
+    person_image_url: Optional[str] = None
     quality: str = "balanced"
+    mode: str = "2d"
+
+
+class TryOnPreviewCreate(BaseModel):
+    garment_image_url: str
+    person_image_url: Optional[str] = None
+    garment_description: str = "a garment"
+    quality: str = "fast"
+    mode: str = "2d"
+    use_yolo11_pose: bool = True
+    preview_only: bool = True
+
+
+class TryOnPreviewResponse(BaseModel):
+    result_image_url: str
+    person_image_url_used: str
+    garment_image_url: str
+    quality: str
+    mode: str = "2d"
+    pose_engine: str = "none"
+    processing_time_ms: int
+    cached: bool = False
+    personalized: bool = False
+    fallback_model_used: bool = False
 
 
 class TryOnResponse(BaseModel):
@@ -16,10 +40,13 @@ class TryOnResponse(BaseModel):
     garment_id: int
     person_image_url: str
     garment_image_url: Optional[str] = None
+    tryon_mode: str = "2d"
     extracted_garment_url: Optional[str] = None
     status: TryOnStatus
     stage1_result_url: Optional[str] = None
     result_image_url: Optional[str] = None
+    result_model_url: Optional[str] = None
+    result_turntable_url: Optional[str] = None
     quality_gate_score: Optional[float] = None
     quality_gate_passed: Optional[bool] = None
     rating_score: Optional[float] = None
@@ -45,6 +72,8 @@ class TryOnStatusResponse(BaseModel):
     extracted_garment_url: Optional[str] = None
     stage1_result_url: Optional[str] = None
     result_image_url: Optional[str] = None
+    result_model_url: Optional[str] = None
+    result_turntable_url: Optional[str] = None
     quality_gate_score: Optional[float] = None
     quality_gate_passed: Optional[bool] = None
     rating_score: Optional[float] = None

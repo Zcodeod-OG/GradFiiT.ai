@@ -2,6 +2,20 @@
    ALTER.ai Chrome Extension - Overlay & Sidebar Styles
    ============================================================ */
 
+:root {
+  --tryon-accent: #8b5cf6;
+  --tryon-accent-strong: #6d28d9;
+  --tryon-accent-rgb: 139, 92, 246;
+  --tryon-accent-2: #3b82f6;
+  --tryon-accent-2-rgb: 59, 130, 246;
+  --tryon-text: #e5e5ea;
+  --tryon-muted: #a0a0a8;
+  --tryon-soft: #6b6b73;
+  --tryon-sidebar-bg-start: #0f0a1a;
+  --tryon-sidebar-bg-mid: #1a1030;
+  --tryon-sidebar-bg-end: #0d1525;
+}
+
 /* ─── Try-On Button Overlay ─────────────────────────────────── */
 .tryon-ai-overlay {
   transition: opacity 0.25s ease, transform 0.25s ease;
@@ -34,45 +48,46 @@
   height: 52px;
   border-radius: 50%;
   cursor: pointer;
-  background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, var(--tryon-accent) 0%, var(--tryon-accent-2) 100%);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 24px rgba(139, 92, 246, 0.5), 0 0 0 0 rgba(139, 92, 246, 0.3);
+  box-shadow: 0 4px 24px rgba(var(--tryon-accent-rgb), 0.5), 0 0 0 0 rgba(var(--tryon-accent-rgb), 0.3);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   animation: tryon-toggle-pulse 2s ease-in-out infinite;
   border: none;
 }
 #tryon-ai-sidebar-toggle:hover {
   transform: scale(1.1);
-  box-shadow: 0 6px 32px rgba(139, 92, 246, 0.6), 0 0 0 8px rgba(139, 92, 246, 0.15);
+  box-shadow: 0 6px 32px rgba(var(--tryon-accent-rgb), 0.6), 0 0 0 8px rgba(var(--tryon-accent-rgb), 0.15);
 }
 #tryon-ai-sidebar-toggle.active {
-  background: linear-gradient(135deg, #6d28d9 0%, #2563eb 100%);
+  background: linear-gradient(135deg, var(--tryon-accent-strong) 0%, var(--tryon-accent-2) 100%);
   animation: none;
 }
 @keyframes tryon-toggle-pulse {
-  0%, 100% { box-shadow: 0 4px 24px rgba(139, 92, 246, 0.5), 0 0 0 0 rgba(139, 92, 246, 0.3); }
-  50% { box-shadow: 0 4px 24px rgba(139, 92, 246, 0.5), 0 0 0 8px rgba(139, 92, 246, 0); }
+  0%, 100% { box-shadow: 0 4px 24px rgba(var(--tryon-accent-rgb), 0.5), 0 0 0 0 rgba(var(--tryon-accent-rgb), 0.3); }
+  50% { box-shadow: 0 4px 24px rgba(var(--tryon-accent-rgb), 0.5), 0 0 0 8px rgba(var(--tryon-accent-rgb), 0); }
 }
 
 /* ─── Sidebar Panel ─────────────────────────────────────────── */
 #tryon-ai-sidebar {
+  --tryon-sidebar-width: min(420px, 92vw);
   position: fixed;
   top: 0;
-  right: -380px;
-  width: 360px;
+  right: calc(-1 * var(--tryon-sidebar-width) - 20px);
+  width: var(--tryon-sidebar-width);
   height: 100vh;
   z-index: 999991;
-  background: linear-gradient(180deg, #0f0a1a 0%, #1a1030 40%, #0d1525 100%);
-  border-left: 1px solid rgba(139, 92, 246, 0.2);
-  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5), -2px 0 20px rgba(139, 92, 246, 0.1);
+  background: linear-gradient(180deg, var(--tryon-sidebar-bg-start) 0%, var(--tryon-sidebar-bg-mid) 40%, var(--tryon-sidebar-bg-end) 100%);
+  border-left: 1px solid rgba(var(--tryon-accent-rgb), 0.24);
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5), -2px 0 20px rgba(var(--tryon-accent-rgb), 0.14);
   transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  color: #e5e5ea;
+  color: var(--tryon-text);
   overflow: hidden;
 }
 #tryon-ai-sidebar.open {
@@ -85,8 +100,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 18px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(59, 130, 246, 0.12) 100%);
-  border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+  background: linear-gradient(135deg, rgba(var(--tryon-accent-rgb), 0.16) 0%, rgba(var(--tryon-accent-2-rgb), 0.16) 100%);
+  border-bottom: 1px solid rgba(var(--tryon-accent-rgb), 0.2);
   backdrop-filter: blur(12px);
   flex-shrink: 0;
 }
@@ -98,7 +113,7 @@
 .tryon-sidebar-title {
   font-size: 16px;
   font-weight: 700;
-  background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+  background: linear-gradient(135deg, var(--tryon-accent), var(--tryon-accent-2));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -108,9 +123,9 @@
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 10px;
-  background: rgba(139, 92, 246, 0.2);
-  color: #c4b5fd;
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: rgba(var(--tryon-accent-rgb), 0.2);
+  color: color-mix(in srgb, var(--tryon-accent) 72%, #ffffff 28%);
+  border: 1px solid rgba(var(--tryon-accent-rgb), 0.35);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -120,7 +135,7 @@
   border-radius: 8px;
   padding: 6px;
   cursor: pointer;
-  color: #a0a0a8;
+  color: var(--tryon-muted);
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
@@ -145,7 +160,7 @@
   background: transparent;
 }
 .tryon-sidebar-content::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.3);
+  background: rgba(var(--tryon-accent-rgb), 0.35);
   border-radius: 3px;
 }
 
@@ -160,14 +175,14 @@
   gap: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: #a0a0a8;
+  color: var(--tryon-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 12px;
 }
 .tryon-item-count {
-  background: rgba(139, 92, 246, 0.2);
-  color: #c4b5fd;
+  background: rgba(var(--tryon-accent-rgb), 0.2);
+  color: color-mix(in srgb, var(--tryon-accent) 65%, #ffffff 35%);
   font-size: 10px;
   padding: 1px 7px;
   border-radius: 8px;
@@ -192,7 +207,7 @@
   justify-content: center;
   height: 100%;
   gap: 12px;
-  color: #6b6b73;
+  color: var(--tryon-soft);
   font-size: 13px;
 }
 .tryon-model-img {
@@ -211,15 +226,15 @@
   gap: 12px;
   background: rgba(15, 10, 26, 0.85);
   backdrop-filter: blur(8px);
-  color: #c4b5fd;
+  color: color-mix(in srgb, var(--tryon-accent) 65%, #ffffff 35%);
   font-size: 13px;
   font-weight: 500;
 }
 .tryon-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid rgba(139, 92, 246, 0.2);
-  border-top-color: #8b5cf6;
+  border: 3px solid rgba(var(--tryon-accent-rgb), 0.2);
+  border-top-color: var(--tryon-accent);
   border-radius: 50%;
   animation: tryon-spin 0.8s linear infinite;
 }
@@ -252,22 +267,22 @@
   cursor: not-allowed;
 }
 .tryon-action-primary {
-  background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, var(--tryon-accent) 0%, var(--tryon-accent-2) 100%);
   color: #fff;
-  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 2px 12px rgba(var(--tryon-accent-rgb), 0.34);
 }
 .tryon-action-primary:not(:disabled):hover {
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.5);
+  box-shadow: 0 4px 20px rgba(var(--tryon-accent-rgb), 0.5);
   transform: translateY(-1px);
 }
 .tryon-action-secondary {
   background: rgba(255, 255, 255, 0.06);
-  color: #c4b5fd;
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  color: color-mix(in srgb, var(--tryon-accent) 65%, #ffffff 35%);
+  border: 1px solid rgba(var(--tryon-accent-rgb), 0.24);
 }
 .tryon-action-secondary:not(:disabled):hover {
-  background: rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.4);
+  background: rgba(var(--tryon-accent-rgb), 0.15);
+  border-color: rgba(var(--tryon-accent-rgb), 0.42);
 }
 
 /* ─── Garment List ──────────────────────────────────────────── */
@@ -282,7 +297,7 @@
   width: 4px;
 }
 .tryon-garment-list::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.3);
+  background: rgba(var(--tryon-accent-rgb), 0.35);
   border-radius: 2px;
 }
 .tryon-garment-item {
@@ -297,13 +312,13 @@
   transition: all 0.2s ease;
 }
 .tryon-garment-item:hover {
-  background: rgba(139, 92, 246, 0.1);
-  border-color: rgba(139, 92, 246, 0.3);
+  background: rgba(var(--tryon-accent-rgb), 0.12);
+  border-color: rgba(var(--tryon-accent-rgb), 0.32);
 }
 .tryon-garment-item.selected {
-  background: rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.4);
-  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.2);
+  background: rgba(var(--tryon-accent-rgb), 0.18);
+  border-color: rgba(var(--tryon-accent-rgb), 0.42);
+  box-shadow: 0 0 0 1px rgba(var(--tryon-accent-rgb), 0.22);
 }
 .tryon-garment-thumb {
   width: 48px;
@@ -320,15 +335,27 @@
 .tryon-garment-name {
   font-size: 13px;
   font-weight: 600;
-  color: #e5e5ea;
+  color: var(--tryon-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .tryon-garment-meta {
   font-size: 11px;
-  color: #6b6b73;
+  color: var(--tryon-soft);
   margin-top: 2px;
+}
+.tryon-garment-preview-tag {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #dbeafe;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.35);
 }
 .tryon-garment-remove {
   background: none;
@@ -354,7 +381,7 @@
   align-items: center;
   justify-content: center;
   padding: 20px 12px;
-  color: #6b6b73;
+  color: var(--tryon-soft);
   font-size: 12px;
   text-align: center;
   line-height: 1.5;
@@ -371,7 +398,7 @@
   height: 4px;
 }
 .tryon-history-list::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.3);
+  background: rgba(var(--tryon-accent-rgb), 0.35);
   border-radius: 2px;
 }
 .tryon-history-item {
@@ -386,7 +413,7 @@
   position: relative;
 }
 .tryon-history-item:hover {
-  border-color: rgba(139, 92, 246, 0.4);
+  border-color: rgba(var(--tryon-accent-rgb), 0.42);
   transform: translateY(-2px);
 }
 .tryon-history-item img {
@@ -419,14 +446,14 @@
 }
 .tryon-footer-link {
   font-size: 12px;
-  color: #8b5cf6;
+  color: var(--tryon-accent);
   text-decoration: none;
   font-weight: 600;
   cursor: pointer;
   transition: color 0.2s ease;
 }
 .tryon-footer-link:hover {
-  color: #a78bfa;
+  color: color-mix(in srgb, var(--tryon-accent) 70%, #ffffff 30%);
 }
 .tryon-footer-divider {
   color: #3a3a42;
@@ -434,7 +461,14 @@
 }
 .tryon-footer-powered {
   font-size: 11px;
-  color: #4a4a52;
+  color: color-mix(in srgb, var(--tryon-soft) 75%, #0f172a 25%);
+}
+
+@media (max-width: 640px) {
+  #tryon-ai-sidebar {
+    --tryon-sidebar-width: 92vw;
+    right: calc(-1 * var(--tryon-sidebar-width) - 10px);
+  }
 }
 
 /* ─── Sidebar Backdrop (mobile) ─────────────────────────────── */

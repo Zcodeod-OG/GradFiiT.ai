@@ -3,16 +3,58 @@
 
 // Configuration
 const CONFIG = {
-  maxFreeTriesPerDay: 50,
+  maxFreeTriesPerDay: 4,
   storageKeys: {
     analytics: 'tryon_analytics',
     dailyCount: 'tryon_daily_count',
     lastResetDate: 'tryon_last_reset_date',
     popularDomains: 'tryon_popular_domains',
     tryOnHistory: 'tryon_history',
+    userToken: 'tryon_user_token',
+    userTier: 'tryon_user_tier',
+    userMode: 'tryon_user_mode',
   },
   appUrl: 'http://localhost:3000',
+  apiUrl: 'http://localhost:8000',
 };
+
+function getTierLimit(tier, mode) {
+  switch (tier) {
+    case 'free_3d':
+      return mode === '3d' ? 2 : 0;
+    case 'premium_2d':
+      return mode === '2d' ? 195 : 0;
+    case 'premium_3d':
+      return mode === '3d' ? 180 : 0;
+    case 'ultra':
+      return 365;
+    case 'business':
+      return 9999;
+    case 'free_2d':
+    default:
+      return mode === '2d' ? 4 : 0;
+  }
+}
+
+async function getActiveTierAndMode(modeOverride = null) {
+  const result = await chrome.storage.local.get([
+    CONFIG.storageKeys.userTier,
+    CONFIG.storageKeys.userMode,
+  ]);
+  const tier = result[CONFIG.storageKeys.userTier] || 'free_2d';
+  const mode = modeOverride || result[CONFIG.storageKeys.userMode] || '2d';
+  return { tier, mode };
+}
+
+async function getCurrentLimit(modeOverride = null) {
+  try {
+    const { tier, mode } = await getActiveTierAndMode(modeOverride);
+    return getTierLimit(tier, mode);
+  } catch (error) {
+    console.warn('Failed to resolve tier limit, using free 2D default:', error);
+    return CONFIG.maxFreeTriesPerDay;
+  }
+}
 
 /**
  * Reset daily counter if needed (at start of new day)
@@ -74,10 +116,11 @@ async function incrementDailyCount() {
 /**
  * Check if user has tries remaining
  */
-async function hasTriesRemaining() {
+async function hasTriesRemaining(mode = '2d') {
   try {
     const count = await getDailyCount();
-    return count < CONFIG.maxFreeTriesPerDay;
+    const limit = await getCurrentLimit(mode);
+    return count < limit;
   } catch (error) {
     console.error('Error checking tries remaining:', error);
     return true; // Allow on error to not block users
@@ -87,13 +130,14 @@ async function hasTriesRemaining() {
 /**
  * Update badge counter
  */
-async function updateBadge(count = null) {
+async function updateBadge(count = null, mode = null) {
   try {
     if (count === null) {
       count = await getDailyCount();
     }
-    
-    const remaining = Math.max(0, CONFIG.maxFreeTriesPerDay - count);
+
+    const limit = await getCurrentLimit(mode);
+    const remaining = Math.max(0, limit - count);
     
     if (remaining === 0) {
       // No tries left - show warning badge
@@ -221,12 +265,144 @@ function buildTryOnUrl(data) {
     if (data.brand) {
       url.searchParams.set('brand', data.brand);
     }
+
+    if (data.tryonMode) {
+      url.searchParams.set('mode', data.tryonMode);
+    }
     
     return url.toString();
   } catch (error) {
     console.error('Error building TryOn URL:', error);
     // Fallback to basic URL
     return `${CONFIG.appUrl}/try?image=${encodeURIComponent(data.imageUrl || '')}`;
+  }
+}
+
+function extractQuickPreviewUrl(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  if (payload.result_image_url) return payload.result_image_url;
+  if (payload.resultUrl) return payload.resultUrl;
+  if (payload.preview_url) return payload.preview_url;
+  if (payload.stage1_result_url) return payload.stage1_result_url;
+  if (payload.data && typeof payload.data === 'object') {
+    if (payload.data.result_image_url) return payload.data.result_image_url;
+    if (payload.data.resultUrl) return payload.data.resultUrl;
+    if (payload.data.preview_url) return payload.data.preview_url;
+    if (payload.data.stage1_result_url) return payload.data.stage1_result_url;
+  }
+  return '';
+}
+
+async function fetchJsonWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (e) {
+      data = null;
+    }
+
+    return { response, data };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Handle quick try-on preview (fast inference)
+ */
+async function handleQuickTryOn(data, sendResponse) {
+  try {
+    if (!data.imageUrl) {
+      sendResponse({ success: false, error: 'Image URL required' });
+      return;
+    }
+
+    let authToken = '';
+    try {
+      const tokenResult = await chrome.storage.local.get(CONFIG.storageKeys.userToken);
+      authToken = tokenResult[CONFIG.storageKeys.userToken] || '';
+    } catch (e) {
+      authToken = '';
+    }
+
+    const endpoints = [
+      `${CONFIG.apiUrl}/api/tryon/preview`,
+      `${CONFIG.appUrl}/api/tryon/preview`,
+    ];
+
+    let lastError = 'Quick preview endpoint unavailable';
+
+    for (const endpoint of endpoints) {
+      try {
+        const { response, data: result } = await fetchJsonWithTimeout(
+          endpoint,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+            },
+            body: JSON.stringify({
+              garment_image_url: data.imageUrl,
+              quality: data.quality || 'fast',
+              preview_only: true,
+              mode: '2d',
+              use_yolo11_pose: true,
+              person_image_url: data.personImageUrl || '',
+              garment_description: data.title || 'a garment',
+              source_url: data.url || data.sourceUrl || '',
+            }),
+          },
+          30000
+        );
+
+        if (!response.ok) {
+          lastError = `Preview API failed (${response.status})`;
+          continue;
+        }
+
+        const previewUrl = extractQuickPreviewUrl(result);
+        if (previewUrl) {
+          sendResponse({
+            success: true,
+            resultUrl: previewUrl,
+            processingTime: (
+              result && (
+                result.processing_time ||
+                result.processing_time_ms ||
+                (result.data && (result.data.processing_time || result.data.processing_time_ms))
+              )
+            ) || 0,
+          });
+          return;
+        }
+
+        lastError = 'Quick preview response had no image URL';
+      } catch (error) {
+        lastError = error.message || 'Quick preview request failed';
+      }
+    }
+
+    // Graceful fallback so content script can still show an instant mock preview.
+    sendResponse({
+      success: true,
+      resultUrl: data.imageUrl,
+      isFallback: true,
+      error: lastError,
+    });
+
+  } catch (error) {
+    console.error('Quick try-on error:', error);
+    sendResponse({ success: false, error: error.message });
   }
 }
 
@@ -243,9 +419,11 @@ async function handleTryOnRequest(data, sendResponse) {
       });
       return;
     }
-    
+
+    const { mode: preferredMode } = await getActiveTierAndMode(data.tryonMode || null);
+
     // Check rate limit
-    const hasRemaining = await hasTriesRemaining();
+    const hasRemaining = await hasTriesRemaining(preferredMode);
     if (!hasRemaining) {
       sendResponse({
         success: false,
@@ -255,22 +433,22 @@ async function handleTryOnRequest(data, sendResponse) {
       });
       return;
     }
-    
+
     // Get current count before incrementing
     const currentCount = await getDailyCount();
-    
+
     // Increment counter
     await incrementDailyCount();
-    
+
     // Track analytics
     await trackAnalytics({
       imageUrl: data.imageUrl,
       productTitle: data.productTitle || data.title || '',
       price: data.price || '',
-      sourceUrl: data.sourceUrl || data.url || window.location?.href || '',
+      sourceUrl: data.sourceUrl || data.url || '',
       brand: data.brand || '',
     });
-    
+
     // Build URL
     const tryOnUrl = buildTryOnUrl({
       imageUrl: data.imageUrl,
@@ -278,8 +456,9 @@ async function handleTryOnRequest(data, sendResponse) {
       price: data.price,
       sourceUrl: data.sourceUrl || data.url,
       brand: data.brand,
+      tryonMode: preferredMode,
     });
-    
+
     // Open new tab
     try {
       await chrome.tabs.create({
@@ -294,17 +473,19 @@ async function handleTryOnRequest(data, sendResponse) {
       });
       return;
     }
-    
+
     // Update badge
-    await updateBadge(currentCount + 1);
-    
+    await updateBadge(currentCount + 1, preferredMode);
+
+    const currentLimit = await getCurrentLimit(preferredMode);
+
     // Send success response
     sendResponse({
       success: true,
-      remaining: CONFIG.maxFreeTriesPerDay - (currentCount + 1),
+      remaining: Math.max(0, currentLimit - (currentCount + 1)),
       url: tryOnUrl,
     });
-    
+
   } catch (error) {
     console.error('Error handling try-on request:', error);
     sendResponse({
@@ -325,18 +506,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'tryOnProduct':
           await handleTryOnRequest(request.metadata, sendResponse);
           break;
-          
+
+        case 'quickTryOn':
+          await handleQuickTryOn(request.metadata, sendResponse);
+          break;
+
         case 'getRemainingTries':
           const count = await getDailyCount();
-          const remaining = Math.max(0, CONFIG.maxFreeTriesPerDay - count);
+          const { mode } = await getActiveTierAndMode();
+          const limit = await getCurrentLimit(mode);
+          const remaining = Math.max(0, limit - count);
           sendResponse({
             success: true,
             remaining: remaining,
-            total: CONFIG.maxFreeTriesPerDay,
+            total: limit,
             count: count,
           });
           break;
-          
+
         case 'getAnalytics':
           const analytics = await chrome.storage.local.get([
             CONFIG.storageKeys.analytics,
@@ -350,7 +537,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             dailyCount: analytics[CONFIG.storageKeys.dailyCount] || 0,
           });
           break;
-          
+
         case 'resetDailyCount':
           // For testing/admin purposes
           await chrome.storage.local.set({
@@ -360,7 +547,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           await updateBadge(0);
           sendResponse({ success: true });
           break;
-          
+
         default:
           sendResponse({
             success: false,
@@ -375,7 +562,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
   })();
-  
+
   // Return true to indicate async response
   return true;
 });
@@ -435,7 +622,8 @@ chrome.action.onClicked.addListener(async (tab) => {
   try {
     // Check remaining tries
     const count = await getDailyCount();
-    const remaining = Math.max(0, CONFIG.maxFreeTriesPerDay - count);
+    const limit = await getCurrentLimit();
+    const remaining = Math.max(0, limit - count);
     
     if (remaining === 0) {
       // Open options page or show message
