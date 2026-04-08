@@ -3,5 +3,14 @@
 @tailwind utilities;
 
 body {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #f6f6f6;
+}
+
+.neo-shadow {
+    box-shadow: 4px 4px 0px 0px rgba(45, 47, 47, 1);
+}
+
+.neo-shadow-lg {
+    box-shadow: 8px 8px 0px 0px rgba(45, 47, 47, 1);
 }

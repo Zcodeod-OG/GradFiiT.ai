@@ -1,49 +1,36 @@
-import { useState } from "react";
-import { UploadCloud } from "lucide-react";
-
-export default function Hero() {
-    const [image, setImage] = useState(null);
-
-    const handleUpload = (e) => {
-        const file = e.target.files[0];
-        if (file) setImage(URL.createObjectURL(file));
-    };
-
+const Hero = () => {
     return (
-        <section className="grid md:grid-cols-2 gap-12 px-12 py-20 items-center relative z-10">
+        <section className="relative min-h-[921px] flex items-center px-6 lg:px-24 py-12">
 
-            {/* Left */}
-            <div>
-                <h1 className="text-6xl font-extrabold leading-tight">
-                    Try Your Style
-                    <br />
-                    <span className="bg-gradient-to-r from-purple-300 to-blue-300 bg-clip-text text-transparent">
-            Before You Buy
-          </span>
+            <div className="absolute top-20 right-[-5%] w-64 h-64 bg-primary-container border-4 border-black -rotate-12 hidden lg:block"></div>
+
+            <div className="relative z-10 max-w-4xl">
+
+                <div className="inline-block bg-tertiary-container border-2 border-black px-4 py-1 mb-6 font-label font-bold text-sm">
+                    THE FUTURE OF FASHION
+                </div>
+
+                <h1 className="text-6xl md:text-8xl lg:text-[10rem] font-black font-headline leading-[0.85] uppercase">
+                    BE ANYONE, <br />
+                    WEAR <span className="text-primary italic">ANYTHING</span>
                 </h1>
 
-                <p className="mt-6 text-gray-400 max-w-lg">
-                    Upload your photo and instantly see outfits, hairstyles, and looks powered by AI.
+                <p className="text-xl md:text-2xl max-w-2xl mb-12 font-semibold">
+                    The world's most advanced AI engine for hyper-realistic virtual try-ons.
                 </p>
 
-                <button className="mt-8 px-8 py-3 bg-gradient-to-r from-purple-300 to-blue-300 text-black rounded-full font-semibold">
-                    Try Now
-                </button>
-            </div>
+                <div className="flex gap-6">
+                    <button className="bg-primary text-white text-2xl font-bold px-12 py-6 border-4 border-black neo-shadow-lg">
+                        Try It Now
+                    </button>
 
-            {/* Right */}
-            <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl shadow-2xl">
-
-                <label className="cursor-pointer block text-center p-8 border border-dashed border-gray-500 rounded-xl hover:bg-white/5 transition">
-                    <UploadCloud className="mx-auto mb-3 text-purple-300" size={40} />
-                    <p className="text-gray-400">Upload Image</p>
-                    <input type="file" className="hidden" onChange={handleUpload} />
-                </label>
-
-                {image && (
-                    <img src={image} className="mt-6 rounded-xl" />
-                )}
+                    <button className="bg-white text-black text-2xl font-bold px-12 py-6 border-4 border-black neo-shadow-lg">
+                        View Lookbook
+                    </button>
+                </div>
             </div>
         </section>
-    );
+    )
 }
+
+export default Hero

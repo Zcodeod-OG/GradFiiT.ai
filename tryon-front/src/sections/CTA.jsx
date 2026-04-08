@@ -1,10 +1,20 @@
-export default function CTA() {
+const CTA = () => {
     return (
-        <section className="text-center py-24">
-            <h2 className="text-4xl font-bold">Transform Your Look Today</h2>
-            <button className="mt-8 px-10 py-4 bg-white text-black rounded-full font-semibold">
-                Start Exploring
-            </button>
+        <section className="py-24 px-6 lg:px-24">
+
+            <div className="bg-primary p-12 border-4 border-black neo-shadow-lg text-center">
+
+                <h2 className="text-5xl font-black text-white mb-12">
+                    START YOUR EVOLUTION
+                </h2>
+
+                <button className="bg-black text-white text-2xl px-12 py-6 border-4 border-black">
+                    FREE ACCESS
+                </button>
+
+            </div>
         </section>
-    );
+    )
 }
+
+export default CTA

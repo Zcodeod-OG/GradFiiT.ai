@@ -1,18 +1,28 @@
-export default function Features() {
+const Features = () => {
     return (
-        <section className="grid md:grid-cols-3 gap-8 px-12 py-16">
-            <Card title="Outfits" desc="Try clothes instantly" />
-            <Card title="Hairstyles" desc="Preview your look" />
-            <Card title="AI Styling" desc="Smart suggestions" />
+        <section className="py-24 px-6 lg:px-24 bg-surface">
+
+            <h2 className="text-5xl font-black font-headline mb-12">
+                ENGINEERED FOR <span className="italic text-secondary">PERFECTION</span>
+            </h2>
+
+            <div className="grid md:grid-cols-3 gap-12">
+
+                <div className="bg-primary-container p-10 border-4 border-black neo-shadow-lg">
+                    <h3 className="text-3xl font-black">Virtual Wardrobe</h3>
+                </div>
+
+                <div className="bg-secondary-container p-10 border-4 border-black neo-shadow-lg">
+                    <h3 className="text-3xl font-black">AI Salon</h3>
+                </div>
+
+                <div className="bg-tertiary-container p-10 border-4 border-black neo-shadow-lg">
+                    <h3 className="text-3xl font-black">Instant Fit</h3>
+                </div>
+
+            </div>
         </section>
-    );
+    )
 }
 
-function Card({ title, desc }) {
-    return (
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-lg">
-            <h3 className="text-xl font-semibold">{title}</h3>
-            <p className="text-gray-400 mt-2">{desc}</p>
-        </div>
-    );
-}
+export default Features
