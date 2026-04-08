@@ -14,10 +14,26 @@ from passlib.context import CryptContext
 from passlib.exc import UnknownHashError
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+
+
+def _verify_legacy_bcrypt(plain_password: str, hashed_password: str) -> bool:
+    """Verify legacy bcrypt hashes without relying on passlib's bcrypt backend."""
+    try:
+        import bcrypt  # type: ignore
+
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except Exception:
+        return False
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    if hashed_password.startswith(("$2a$", "$2b$", "$2y$")):
+        return _verify_legacy_bcrypt(plain_password, hashed_password)
+
     try:
         return pwd_context.verify(plain_password, hashed_password)
     except (ValueError, UnknownHashError):

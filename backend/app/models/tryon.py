@@ -39,7 +39,15 @@ class TryOn(Base):
     extracted_garment_url = Column(String, nullable=True)
 
     # Pipeline tracking
-    status = Column(SQLEnum(TryOnStatus), default=TryOnStatus.PENDING)
+    status = Column(
+        SQLEnum(
+            TryOnStatus,
+            name="tryonstatus",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            validate_strings=True,
+        ),
+        default=TryOnStatus.PENDING,
+    )
     stage1_prediction_id = Column(String, nullable=True)
     stage1_result_url = Column(String, nullable=True)
     stage2_prediction_id = Column(String, nullable=True)
