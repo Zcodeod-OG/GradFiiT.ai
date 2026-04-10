@@ -87,10 +87,9 @@ export function DemoSection() {
   const current = STEPS[activeStep]
 
   return (
-    <section id="demo" className="py-24 relative overflow-hidden">
-      {/* subtle background */}
+    <section id="demo" className="section-spacing relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background via-background to-background" />
-      <div className="container mx-auto px-4 relative">
+      <div className="container-main relative">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -98,7 +97,7 @@ export function DemoSection() {
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="text-center mb-12"
         >
-          <h2 className="text-3xl md:text-5xl font-bold text-foreground">
+          <h2 className="font-display text-4xl md:text-5xl font-bold text-foreground tracking-tight">
             See It In Action
           </h2>
           <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
@@ -109,7 +108,7 @@ export function DemoSection() {
 
         <div className="grid lg:grid-cols-2 gap-6 items-stretch">
           {/* Animated demo / video placeholder */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden bg-white/85 border-border/80">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Animated Demo</span>
@@ -119,11 +118,11 @@ export function DemoSection() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="relative rounded-xl border bg-background/40 overflow-hidden">
+              <div className="relative rounded-xl border bg-white/80 overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/15 via-accent/10 to-transparent" />
 
                 {/* “player” chrome */}
-                <div className="relative flex items-center justify-between px-4 py-3 border-b bg-background/40 backdrop-blur-sm">
+                <div className="relative flex items-center justify-between px-4 py-3 border-b bg-white/70 backdrop-blur-sm">
                   <div className="flex items-center gap-2">
                     <div className="size-2.5 rounded-full bg-destructive/70" />
                     <div className="size-2.5 rounded-full bg-amber-400/70" />
@@ -174,7 +173,7 @@ export function DemoSection() {
                     })}
                   </div>
 
-                  <div className="mt-6 rounded-lg border bg-background/50 p-4">
+                  <div className="mt-6 rounded-lg border bg-white/70 p-4">
                     <AnimatePresence mode="wait">
                       <motion.div
                         key={current.title}
@@ -205,12 +204,12 @@ export function DemoSection() {
           </Card>
 
           {/* Before/After slider */}
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden bg-white/85 border-border/80">
             <CardHeader>
               <CardTitle>Before / After</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="rounded-xl border overflow-hidden bg-background/40">
+              <div className="rounded-xl border overflow-hidden bg-white/80">
                 <ReactCompareImage
                   leftImage={BEFORE_SVG}
                   rightImage={AFTER_SVG}

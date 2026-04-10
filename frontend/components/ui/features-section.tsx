@@ -22,7 +22,7 @@ const features = [
     icon: Sparkles,
     title: "Photorealistic",
     description:
-      "Two-layer AI pipeline with IDM-VTON and SDXL refinement for stunning realism.",
+      "Two-layer AI pipeline with OOTDiffusion and SDXL refinement for stunning realism.",
   },
   {
     icon: Chrome,
@@ -49,18 +49,17 @@ export function FeaturesSection() {
   const isInView = useInView(ref, { once: true, margin: "-80px" })
 
   return (
-    <section id="features" ref={ref} className="py-24 relative">
-      {/* Gradient divider at top */}
+    <section id="features" ref={ref} className="section-spacing relative">
       <div className="gradient-divider mb-24" />
 
-      <div className="container mx-auto px-4">
+      <div className="container-main">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6 }}
           className="text-center mb-16 space-y-4"
         >
-          <h2 className="text-4xl md:text-5xl font-bold text-balance">
+          <h2 className="font-display text-4xl md:text-5xl font-bold text-balance tracking-tight">
             Why Choose{" "}
             <span className="text-gradient">ALTER.ai</span>
           </h2>
@@ -79,13 +78,11 @@ export function FeaturesSection() {
               transition={{ duration: 0.5, delay: index * 0.1 }}
             >
               <TiltCard intensity={12} className="h-full">
-                <div className="glass-effect rounded-2xl p-8 h-full relative group overflow-hidden">
-                  {/* Shimmer overlay on hover */}
+                <div className="surface-panel rounded-2xl p-8 h-full relative group overflow-hidden transition-all duration-300 group-hover:-translate-y-1 group-hover:neo-shadow">
                   <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.03] to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
                   </div>
 
-                  {/* Animated icon */}
                   <motion.div
                     initial={{ scale: 0, rotate: -180 }}
                     animate={
@@ -97,15 +94,15 @@ export function FeaturesSection() {
                       damping: 15,
                       delay: 0.3 + index * 0.1,
                     }}
-                    className="size-14 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center mb-6 group-hover:shadow-[0_0_30px_oklch(0.65_0.25_275/0.3)] transition-shadow duration-300"
+                    className="size-14 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center mb-6 transition-shadow duration-300 group-hover:shadow-[0_10px_24px_oklch(0.56_0.14_250/0.35)]"
                   >
                     <feature.icon className="size-7 text-primary-foreground" />
                   </motion.div>
 
-                  <h3 className="text-xl font-bold mb-3 text-foreground">
+                  <h3 className="font-display text-2xl font-bold mb-3 tracking-tight text-foreground">
                     {feature.title}
                   </h3>
-                  <p className="text-muted-foreground leading-relaxed text-sm">
+                  <p className="text-muted-foreground leading-relaxed text-[0.95rem]">
                     {feature.description}
                   </p>
                 </div>

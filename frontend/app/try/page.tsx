@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation"
 import { useDropzone, type FileRejection } from "react-dropzone"
 import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
-import axios from "axios"
 import {
   Upload,
   Camera,
@@ -26,6 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { uploadApi, garmentsApi, tryonApi, userApi } from "@/lib/api"
+import { getApiErrorMessage } from "@/lib/api-error"
 import { useAuth } from "@/lib/auth"
 import { TIER_LABELS, TIER_TO_ALLOWED_MODES, type SubscriptionTier, type TryOnMode } from "@/lib/plans"
 import { ProcessingStatus } from "@/components/ProcessingStatus"
@@ -61,15 +61,6 @@ const qualityOptions = [
   { value: "balanced" as QualityOption, label: "Balanced", time: "1m", description: "Best quality" },
   { value: "best" as QualityOption, label: "Best", time: "2m", description: "Highest quality" },
 ]
-
-type ApiErrorPayload = { detail?: string }
-
-const getApiErrorDetail = (error: unknown): string | undefined => {
-  if (axios.isAxiosError<ApiErrorPayload>(error)) {
-    return error.response?.data?.detail
-  }
-  return undefined
-}
 
 // Helper functions
 const formatFileSize = (bytes: number): string => {
@@ -279,7 +270,7 @@ export default function TryOnPage() {
       }
       setShowLoginForm(false)
     } catch (err: unknown) {
-      toast.error(getApiErrorDetail(err) || "Authentication failed")
+      toast.error(getApiErrorMessage(err, "Authentication failed"))
     } finally {
       setLoginLoading(false)
     }
@@ -303,7 +294,7 @@ export default function TryOnPage() {
       await userApi.updatePreferences({ preferred_tryon_mode: mode })
       toast.success(`Switched to ${mode.toUpperCase()} mode`)
     } catch (error: unknown) {
-      toast.error(getApiErrorDetail(error) || "Could not save mode preference")
+      toast.error(getApiErrorMessage(error, "Could not save mode preference"))
     } finally {
       setIsSavingMode(false)
     }
@@ -586,7 +577,7 @@ export default function TryOnPage() {
             setError(statusData.error_message || "Generation failed")
             setIsProcessing(false)
             setEstimatedTimeRemaining(0)
-            toast.error("Generation failed")
+            toast.error(statusData.error_message || "Generation failed")
           }
         } catch {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
@@ -598,7 +589,7 @@ export default function TryOnPage() {
       }, 3000)
 
     } catch (err: unknown) {
-      setError(getApiErrorDetail(err) || "Failed to start generation")
+      setError(getApiErrorMessage(err, "Failed to start generation"))
       setIsProcessing(false)
       setEstimatedTimeRemaining(0)
       if (estimatedTimeIntervalRef.current) clearInterval(estimatedTimeIntervalRef.current)
@@ -639,8 +630,8 @@ export default function TryOnPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background py-8 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-      {/* Subtle mouse-follow gradient background */}
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_12%_8%,oklch(0.76_0.09_250/.24),transparent_52%),radial-gradient(circle_at_88%_16%,oklch(0.76_0.08_190/.2),transparent_56%)]" />
       <MouseFollowGradient />
       <div className="max-w-7xl mx-auto relative z-10">
         <motion.div
@@ -648,17 +639,17 @@ export default function TryOnPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
+          <h1 className="font-display text-4xl md:text-5xl font-bold tracking-tight text-foreground mb-2">
             Virtual Try-On
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-base md:text-lg">
             Upload your photo and a garment to see how it looks on you
           </p>
         </motion.div>
 
         {/* Auth Bar */}
         <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-white/80 px-3 py-2 shadow-sm">
             <Box className="size-4 text-primary" />
             <span className="text-xs text-muted-foreground">{TIER_LABELS[currentTier]}</span>
             <div className="flex items-center gap-1">
@@ -1180,7 +1171,7 @@ export default function TryOnPage() {
               <p className="text-xs text-muted-foreground">
                 {tryonMode === "3d"
                   ? "3D mode uses Tripo AI mannequin generation with garment fitting and 360 output."
-                  : "2D mode uses IDM-VTON pipeline for fast photorealistic try-ons."}
+                  : "2D mode uses OOTDiffusion pipeline for fast photorealistic try-ons."}
               </p>
 
               {/* Processing Status */}

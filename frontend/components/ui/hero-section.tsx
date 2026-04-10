@@ -1,27 +1,17 @@
 "use client"
 
-import { useRef, useState, useEffect } from "react"
-import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
+import { useState, useEffect } from "react"
+import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Sparkles, ArrowRight, ChevronDown, Upload, Shirt, Wand2 } from "lucide-react"
-import { ParticleField } from "@/components/ui/particle-field"
-import { MouseFollowGradient } from "@/components/ui/mouse-follow-gradient"
+import { Sparkles, ArrowRight, ChevronDown, Shirt, Wand2 } from "lucide-react"
 import { AnimatedCounter } from "@/components/ui/animated-counter"
 import Link from "next/link"
 
 const ROTATING_WORDS = ["Virtually", "Instantly", "Perfectly", "Effortlessly"]
 
 export function HeroSection() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start start", "end start"],
-  })
-
-  const contentY = useTransform(scrollYProgress, [0, 1], [0, -120])
-  const contentOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0])
-
   const [wordIndex, setWordIndex] = useState(0)
+  const [split, setSplit] = useState(52)
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -30,258 +20,166 @@ export function HeroSection() {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSplit((prev) => (prev >= 58 ? 44 : 58))
+    }, 2200)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
-    <section
-      ref={containerRef}
-      className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20"
-    >
-      {/* Layer 1: Animated gradient mesh background */}
-      <div className="absolute inset-0">
+    <section className="relative min-h-screen overflow-hidden pt-28 pb-20 md:pt-32 md:pb-24">
+      <div className="absolute inset-0 pointer-events-none">
         <motion.div
-          className="absolute inset-0 opacity-40"
+          className="absolute inset-0 opacity-60"
           animate={{
             background: [
-              "radial-gradient(circle 800px at 20% 40%, oklch(0.65 0.25 275 / 0.3) 0%, transparent 70%), radial-gradient(circle 600px at 80% 60%, oklch(0.55 0.22 245 / 0.2) 0%, transparent 70%)",
-              "radial-gradient(circle 800px at 80% 30%, oklch(0.55 0.22 245 / 0.3) 0%, transparent 70%), radial-gradient(circle 600px at 20% 70%, oklch(0.65 0.25 275 / 0.2) 0%, transparent 70%)",
-              "radial-gradient(circle 800px at 50% 80%, oklch(0.6 0.2 260 / 0.3) 0%, transparent 70%), radial-gradient(circle 600px at 50% 20%, oklch(0.65 0.25 275 / 0.2) 0%, transparent 70%)",
-              "radial-gradient(circle 800px at 20% 40%, oklch(0.65 0.25 275 / 0.3) 0%, transparent 70%), radial-gradient(circle 600px at 80% 60%, oklch(0.55 0.22 245 / 0.2) 0%, transparent 70%)",
+              "radial-gradient(circle 680px at 10% 15%, oklch(0.74 0.1 250 / 0.28) 0%, transparent 60%), radial-gradient(circle 520px at 80% 20%, oklch(0.75 0.08 190 / 0.24) 0%, transparent 65%)",
+              "radial-gradient(circle 620px at 18% 28%, oklch(0.74 0.1 250 / 0.24) 0%, transparent 60%), radial-gradient(circle 560px at 84% 26%, oklch(0.75 0.08 190 / 0.3) 0%, transparent 65%)",
+              "radial-gradient(circle 720px at 8% 18%, oklch(0.74 0.1 250 / 0.26) 0%, transparent 60%), radial-gradient(circle 540px at 78% 18%, oklch(0.75 0.08 190 / 0.24) 0%, transparent 65%)",
             ],
           }}
-          transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+          transition={{ duration: 14, repeat: Infinity, ease: "linear" }}
         />
       </div>
 
-      {/* Layer 2: Particle field */}
-      <ParticleField count={45} />
-
-      {/* Layer 3: Mouse-follow gradient */}
-      <MouseFollowGradient intensity={0.15} size={700} />
-
-      {/* Layer 4: Content with parallax */}
-      <motion.div
-        style={{ y: contentY, opacity: contentOpacity }}
-        className="container mx-auto px-4 relative z-10"
-      >
-        <div className="max-w-5xl mx-auto text-center space-y-8">
-          {/* Badge with shimmer */}
+      <div className="container-main relative z-10 grid lg:grid-cols-[1.02fr_0.98fr] gap-12 lg:gap-8 items-center">
+        <div className="space-y-8">
           <motion.div
             initial={{ opacity: 0, scale: 0.8, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
+            transition={{ duration: 0.6, delay: 0.15 }}
           >
-            <span className="glass-effect shimmer px-5 py-2.5 rounded-full text-sm text-primary font-medium inline-flex items-center gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-white/75 px-4 py-2 text-sm font-semibold text-foreground">
               <Sparkles className="size-4" />
-              Powered by Advanced AI
+              New OOTDiffusion-powered engine
             </span>
           </motion.div>
 
-          {/* Headline with morphing word */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.3 }}
           >
-            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold text-balance leading-tight">
-              Try Before You Buy —{" "}
-              <span className="inline-block" style={{ perspective: "600px" }}>
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={ROTATING_WORDS[wordIndex]}
-                    className="text-gradient inline-block"
-                    initial={{ rotateX: -80, opacity: 0, y: 20 }}
-                    animate={{ rotateX: 0, opacity: 1, y: 0 }}
-                    exit={{ rotateX: 80, opacity: 0, y: -20 }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
-                  >
-                    {ROTATING_WORDS[wordIndex]}
-                  </motion.span>
-                </AnimatePresence>
-              </span>
+            <h1 className="font-display text-5xl md:text-7xl lg:text-8xl leading-[0.95] tracking-tight text-balance">
+              Wear It Online
+              <br />
+              <span className="text-gradient">{ROTATING_WORDS[wordIndex]}</span>
             </h1>
+            <p className="mt-5 max-w-2xl text-lg md:text-xl text-muted-foreground">
+              A cleaner, faster virtual try-on flow with photoreal results in under a
+              minute. Upload a photo, choose a garment, and preview instantly.
+            </p>
           </motion.div>
 
-          {/* Subtitle */}
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.5 }}
-            className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto text-balance"
-          >
-            AI-powered virtual try-on that lets you see how any clothing looks on
-            you — in seconds, not hours.
-          </motion.p>
-
-          {/* CTA Buttons */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.7 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+            transition={{ duration: 0.8, delay: 0.5 }}
+            className="flex flex-col sm:flex-row items-start sm:items-center gap-3"
           >
             <Link href="/try">
-              <Button
-                size="lg"
-                className="bg-primary hover:bg-primary/90 text-primary-foreground text-lg px-8 h-14 pulse-glow"
-              >
-                Try It Free
-                <ArrowRight className="size-5 ml-2" />
+              <Button size="lg" className="h-12 px-7">
+                Start Try-On
+                <ArrowRight className="size-5" />
               </Button>
             </Link>
             <Link href="#demo">
               <Button
                 size="lg"
                 variant="outline"
-                className="glass-effect text-foreground border-glass-border hover:bg-white/5 text-lg px-8 h-14 bg-transparent"
+                className="h-12 px-7 bg-white/70"
               >
-                See It In Action
+                Watch Demo
               </Button>
             </Link>
           </motion.div>
 
-          {/* 3D Hero Visual — CSS-based try-on mockup */}
-          <motion.div
-            initial={{ opacity: 0, y: 60 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1.2, delay: 0.9 }}
-            className="pt-12"
-            style={{ perspective: "1200px" }}
-          >
-            <motion.div
-              className="glass-card rounded-2xl p-1.5 max-w-3xl mx-auto relative"
-              initial={{ rotateX: 12 }}
-              animate={{ rotateX: 4 }}
-              whileHover={{ rotateX: 0, scale: 1.02 }}
-              transition={{ type: "spring", stiffness: 100, damping: 20 }}
-            >
-              {/* Inner mockup */}
-              <div className="aspect-video rounded-xl bg-gradient-to-br from-purple-900/30 via-background to-blue-900/30 relative overflow-hidden">
-                {/* Subtle grid overlay */}
-                <div
-                  className="absolute inset-0 opacity-[0.03]"
-                  style={{
-                    backgroundImage:
-                      "linear-gradient(oklch(1 0 0 / 0.3) 1px, transparent 1px), linear-gradient(90deg, oklch(1 0 0 / 0.3) 1px, transparent 1px)",
-                    backgroundSize: "40px 40px",
-                  }}
-                />
-
-                {/* Person silhouette */}
-                <div className="absolute left-[15%] top-[10%] w-[28%] h-[80%] flex items-center justify-center">
-                  <div className="w-full h-full rounded-2xl bg-gradient-to-b from-white/[0.06] to-white/[0.02] border border-white/[0.08] flex flex-col items-center justify-center gap-3">
-                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white/[0.08] border border-white/[0.1]" />
-                    <div className="w-24 h-32 md:w-28 md:h-40 rounded-xl bg-white/[0.06] border border-white/[0.08]" />
-                    <span className="text-xs text-muted-foreground/60 mt-1">Your Photo</span>
-                  </div>
-                </div>
-
-                {/* Center arrow / processing indicator */}
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-                  <motion.div
-                    className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 border border-primary/20 flex items-center justify-center"
-                    animate={{
-                      scale: [1, 1.15, 1],
-                      boxShadow: [
-                        "0 0 20px oklch(0.65 0.25 275 / 0.2)",
-                        "0 0 40px oklch(0.65 0.25 275 / 0.4)",
-                        "0 0 20px oklch(0.65 0.25 275 / 0.2)",
-                      ],
-                    }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  >
-                    <Wand2 className="size-6 md:size-7 text-primary" />
-                  </motion.div>
-                </div>
-
-                {/* Result silhouette */}
-                <div className="absolute right-[15%] top-[10%] w-[28%] h-[80%] flex items-center justify-center">
-                  <div className="w-full h-full rounded-2xl bg-gradient-to-b from-primary/[0.08] to-accent/[0.04] border border-primary/[0.12] flex flex-col items-center justify-center gap-3">
-                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-primary/[0.1] border border-primary/[0.15]" />
-                    <div className="w-24 h-32 md:w-28 md:h-40 rounded-xl bg-gradient-to-b from-primary/[0.1] to-accent/[0.08] border border-primary/[0.12]" />
-                    <span className="text-xs text-primary/60 mt-1">Try-On Result</span>
-                  </div>
-                </div>
-
-                {/* Floating garment cards */}
-                <motion.div
-                  className="absolute top-[5%] right-[5%] w-16 h-20 md:w-20 md:h-24 glass-effect rounded-lg flex items-center justify-center"
-                  animate={{ y: [0, -12, 0] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                >
-                  <Shirt className="size-6 md:size-8 text-primary/60" />
-                </motion.div>
-                <motion.div
-                  className="absolute bottom-[8%] left-[5%] w-14 h-18 md:w-18 md:h-22 glass-effect rounded-lg flex items-center justify-center"
-                  animate={{ y: [0, -16, 0] }}
-                  transition={{
-                    duration: 5,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: 1.5,
-                  }}
-                >
-                  <Upload className="size-5 md:size-6 text-accent/60" />
-                </motion.div>
-                <motion.div
-                  className="absolute top-[40%] left-[3%] w-12 h-14 md:w-16 md:h-18 glass-effect rounded-lg flex items-center justify-center"
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{
-                    duration: 6,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: 0.8,
-                  }}
-                >
-                  <Sparkles className="size-4 md:size-5 text-primary/50" />
-                </motion.div>
-
-                {/* Animated scanning line */}
-                <motion.div
-                  className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary/60 to-transparent"
-                  animate={{ top: ["0%", "100%", "0%"] }}
-                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                />
-              </div>
-            </motion.div>
-          </motion.div>
-
-          {/* Stats row */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 1.2 }}
-            className="flex flex-wrap justify-center gap-8 md:gap-16 pt-8"
+            transition={{ duration: 0.8, delay: 0.7 }}
+            className="grid grid-cols-3 gap-4 max-w-xl"
           >
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-foreground">
+            <div>
+              <div className="font-display text-3xl font-bold">
                 <AnimatedCounter to={10000} suffix="+" duration={2.5} />
               </div>
-              <p className="text-sm text-muted-foreground mt-1">Try-Ons Generated</p>
+              <p className="text-sm text-muted-foreground">Looks generated</p>
             </div>
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-foreground">
-                <AnimatedCounter to={98} suffix="%" duration={2} />
+            <div>
+              <div className="font-display text-3xl font-bold">
+                <AnimatedCounter to={98} suffix="%" duration={2.2} />
               </div>
-              <p className="text-sm text-muted-foreground mt-1">Accuracy Rate</p>
+              <p className="text-sm text-muted-foreground">Fit confidence</p>
             </div>
-            <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-foreground">
-                &lt; <AnimatedCounter to={5} suffix="s" duration={1.5} />
+            <div>
+              <div className="font-display text-3xl font-bold">
+                &lt; <AnimatedCounter to={60} suffix="s" duration={1.8} />
               </div>
-              <p className="text-sm text-muted-foreground mt-1">Processing Time</p>
+              <p className="text-sm text-muted-foreground">Typical runtime</p>
             </div>
           </motion.div>
         </div>
-      </motion.div>
 
-      {/* Scroll indicator */}
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.9, delay: 0.35 }}
+          className="glass-card rounded-3xl p-4 md:p-6"
+        >
+          <div className="rounded-2xl overflow-hidden border border-border bg-white/80">
+            <div className="px-4 py-3 border-b border-border bg-white/70 flex items-center justify-between">
+              <p className="text-sm font-semibold text-foreground">Before / After Preview</p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Wand2 className="size-3.5" />
+                Live compare
+              </div>
+            </div>
+
+            <div className="relative h-[330px] md:h-[420px]">
+              <div className="absolute inset-0 bg-[linear-gradient(160deg,#eceff6_0%,#f4f6fb_100%)]" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,oklch(0.82_0.04_248/.35),transparent_62%)]" />
+
+              <motion.div
+                className="absolute inset-y-0 right-0 bg-[linear-gradient(160deg,#dce2f0_0%,#cfd7e8_100%)]"
+                animate={{ width: `${split}%` }}
+                transition={{ duration: 1.5, ease: "easeInOut" }}
+              />
+
+              <motion.div
+                className="absolute inset-y-0 w-[2px] bg-white shadow-[0_0_0_1px_oklch(0.34_0.03_250/0.1)]"
+                animate={{ left: `${100 - split}%` }}
+                transition={{ duration: 1.5, ease: "easeInOut" }}
+              />
+
+              <motion.div
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 size-12 rounded-full border border-white bg-black/80 text-white flex items-center justify-center"
+                animate={{ left: `${100 - split}%` }}
+                transition={{ duration: 1.5, ease: "easeInOut" }}
+              >
+                <Shirt className="size-5" />
+              </motion.div>
+
+              <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-foreground">
+                Before
+              </div>
+              <div className="absolute right-4 top-4 rounded-full bg-black/80 px-3 py-1 text-xs font-semibold text-white">
+                After
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+
       <motion.div
-        className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10"
+        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10"
         animate={{ y: [0, 8, 0] }}
         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
       >
         <div className="flex flex-col items-center gap-2">
-          <span className="text-xs text-muted-foreground/50">Scroll to explore</span>
-          <ChevronDown className="size-5 text-muted-foreground/40" />
+          <span className="text-xs text-muted-foreground/80">Scroll to explore</span>
+          <ChevronDown className="size-5 text-muted-foreground/70" />
         </div>
       </motion.div>
     </section>

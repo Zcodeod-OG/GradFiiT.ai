@@ -1,7 +1,7 @@
 """
 ALTER.AI - Virtual Try-On API Endpoints
 
-5-stage pipeline: Garment Extraction → IDM-VTON → Quality Gate →
+5-stage pipeline: Garment Extraction → OOTDiffusion → Quality Gate →
 SDXL+ControlNet Refinement (conditional) → Final Rating
 """
 
@@ -9,6 +9,8 @@ import logging
 import threading
 import time
 import hashlib
+import socket
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 from typing import Dict, Any
 
@@ -122,6 +124,7 @@ def _run_pipeline_in_background(
     garment_image_url: str,
     garment_description: str,
     quality: str,
+    garment_category: str | None = None,
     preprocessed_garment_url: str | None = None,
     mode: str = "2d",
 ):
@@ -132,6 +135,7 @@ def _run_pipeline_in_background(
         garment_image_url=garment_image_url,
         garment_description=garment_description,
         quality=quality,
+        garment_category=garment_category,
         preprocessed_garment_url=preprocessed_garment_url,
         mode=mode,
     )
@@ -139,6 +143,24 @@ def _run_pipeline_in_background(
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _is_celery_broker_reachable(timeout_seconds: float = 0.35) -> bool:
+    """Fast broker reachability probe to avoid long Celery connection stalls."""
+    broker_url = (settings.CELERY_BROKER_URL or "").strip()
+    parsed = urlparse(broker_url)
+
+    # Non-Redis brokers are treated as reachable; Celery will handle their own errors.
+    if parsed.scheme not in {"redis", "rediss"}:
+        return True
+
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 6379
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
 
 
 def _select_quality_lane(requested_quality: str, garment: Garment) -> str:
@@ -216,6 +238,9 @@ def generate_tryon(
         or garment.name
         or "a garment"
     )
+    garment_category = (
+        (garment.category or garment.garment_type or "").strip().lower() or None
+    )
     effective_quality = _select_quality_lane(data.quality, garment)
 
     idempotency_key = x_idempotency_key.strip() if x_idempotency_key else None
@@ -275,36 +300,59 @@ def generate_tryon(
     execution_mode = "celery"
 
     if settings.ENABLE_CELERY_TRYON:
-        try:
-            async_result = process_tryon_task.delay(
-                tryon.id,
-                person_image_url,
-                garment_image_url,
-                garment_description,
-                effective_quality,
-                preprocessed_garment_url,
-                requested_mode,
-            )
-            tryon.worker_task_id = async_result.id
-            db.commit()
-        except Exception as exc:
+        broker_reachable = _is_celery_broker_reachable()
+        if not broker_reachable:
             if settings.ALLOW_THREAD_FALLBACK_FOR_TRYON:
                 logger.warning(
-                    "Celery dispatch failed for TryOn %s, using thread fallback: %s",
+                    "Celery broker unavailable for TryOn %s, using thread fallback",
                     tryon.id,
-                    exc,
                 )
                 execution_mode = "thread"
             else:
                 tryon.status = TryOnStatus.FAILED
                 tryon.lifecycle_status = "failed"
-                tryon.error_message = f"Queue dispatch failed: {exc}"[:500]
+                tryon.error_message = "Queue broker unavailable"
                 tryon.execution_finished_at = _utc_now()
                 db.commit()
                 raise HTTPException(
                     status_code=503,
                     detail="Try-on queue is temporarily unavailable",
                 )
+        else:
+            try:
+                async_result = process_tryon_task.apply_async(
+                    args=(
+                        tryon.id,
+                        person_image_url,
+                        garment_image_url,
+                        garment_description,
+                        effective_quality,
+                        garment_category,
+                        preprocessed_garment_url,
+                        requested_mode,
+                    ),
+                    ignore_result=True,
+                )
+                tryon.worker_task_id = async_result.id
+                db.commit()
+            except Exception as exc:
+                if settings.ALLOW_THREAD_FALLBACK_FOR_TRYON:
+                    logger.warning(
+                        "Celery dispatch failed for TryOn %s, using thread fallback: %s",
+                        tryon.id,
+                        exc,
+                    )
+                    execution_mode = "thread"
+                else:
+                    tryon.status = TryOnStatus.FAILED
+                    tryon.lifecycle_status = "failed"
+                    tryon.error_message = f"Queue dispatch failed: {exc}"[:500]
+                    tryon.execution_finished_at = _utc_now()
+                    db.commit()
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Try-on queue is temporarily unavailable",
+                    )
     else:
         if settings.ALLOW_THREAD_FALLBACK_FOR_TRYON:
             execution_mode = "thread"
@@ -328,6 +376,7 @@ def generate_tryon(
                 garment_image_url,
                 garment_description,
                 effective_quality,
+                garment_category,
                 preprocessed_garment_url,
                 requested_mode,
             ),
@@ -358,7 +407,7 @@ def generate_quick_preview(
 ) -> Dict[str, Any]:
     """Generate a fast quick-preview image for extension sidebar usage.
 
-    Uses Stage 1 (IDM-VTON) only for low-latency preview output and supports
+    Uses Stage 1 (OOTDiffusion) only for low-latency preview output and supports
     optional user personalization when auth token is provided.
     """
     if not _is_http_url(data.garment_image_url):
@@ -400,10 +449,12 @@ def generate_quick_preview(
     started = time.perf_counter()
     try:
         pipeline = get_pipeline_service()
-        stage1 = pipeline.run_stage1_idm_vton(
+        preview_category_hint = (data.garment_description or "").strip().lower()
+        stage1 = pipeline.run_stage1_oot_diffusion(
             person_image_url=person_image_url,
             garment_image_url=data.garment_image_url,
             garment_description=data.garment_description or "a garment",
+            garment_category=preview_category_hint,
         )
         result_image_url = stage1.get("output_url")
         if not _is_http_url(result_image_url):
@@ -460,7 +511,7 @@ STAGE_LABEL_MAP = {
     TryOnStatus.QUEUED: "Queued...",
     TryOnStatus.GARMENT_EXTRACTING: "Extracting garment from image...",
     TryOnStatus.GARMENT_EXTRACTED: "Garment extracted, starting try-on...",
-    TryOnStatus.STAGE1_PROCESSING: "Generating virtual try-on (IDM-VTON)...",
+    TryOnStatus.STAGE1_PROCESSING: "Generating virtual try-on (OOTDiffusion)...",
     TryOnStatus.STAGE1_COMPLETED: "Try-on complete, checking quality...",
     TryOnStatus.QUALITY_CHECKING: "Assessing try-on quality...",
     TryOnStatus.QUALITY_PASSED: "Quality check passed!",

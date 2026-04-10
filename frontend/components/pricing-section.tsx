@@ -18,18 +18,17 @@ export function PricingSection() {
   const isInView = useInView(ref, { once: true, margin: "-80px" })
 
   return (
-    <section id="pricing" ref={ref} className="py-24 relative">
-      {/* Gradient divider */}
+    <section id="pricing" ref={ref} className="section-spacing relative">
       <div className="gradient-divider mb-24" />
 
-      <div className="container mx-auto px-4">
+      <div className="container-main">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6 }}
           className="text-center mb-16 space-y-4"
         >
-          <h2 className="text-4xl md:text-5xl font-bold text-balance">
+          <h2 className="font-display text-4xl md:text-5xl font-bold text-balance tracking-tight">
             Simple{" "}
             <span className="text-gradient">Pricing</span>
           </h2>
@@ -61,7 +60,7 @@ export function PricingSection() {
 
               <TiltCard intensity={plan.featured ? 8 : 10} className="h-full">
                 <motion.div
-                  className={`glass-effect rounded-2xl p-8 h-full ${
+                  className={`surface-panel rounded-2xl p-8 h-full ${
                     plan.featured
                       ? "border-2 border-primary/50 shadow-lg shadow-primary/10"
                       : ""
@@ -71,7 +70,7 @@ export function PricingSection() {
                 >
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-2xl font-bold text-foreground mb-2">
+                      <h3 className="font-display text-2xl font-bold text-foreground mb-2 tracking-tight">
                         {plan.name}
                       </h3>
                       <p className="text-muted-foreground text-sm">
@@ -88,8 +87,8 @@ export function PricingSection() {
                       <Button
                         className={
                           plan.featured
-                            ? "w-full bg-primary hover:bg-primary/90 text-primary-foreground pulse-glow"
-                            : "w-full glass-effect border-glass-border hover:bg-white/5 text-foreground"
+                            ? "w-full pulse-glow"
+                            : "w-full bg-white/70 border border-border text-foreground hover:bg-secondary"
                         }
                         size="lg"
                       >

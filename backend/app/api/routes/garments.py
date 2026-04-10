@@ -70,7 +70,7 @@ def create_garment(
 
     if settings.ENABLE_CELERY_GARMENT_PREPROCESS:
         try:
-            process_garment_task.delay(db_garment.id)
+            process_garment_task.apply_async(args=(db_garment.id,), ignore_result=True)
         except Exception:
             db_garment.preprocess_status = "processing"
             db.commit()

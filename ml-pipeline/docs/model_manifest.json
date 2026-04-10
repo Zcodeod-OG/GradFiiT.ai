@@ -1,0 +1,50 @@
+{
+  "stage1_tryon_model": "viktorfa/oot_diffusion:9f8fa4956970dde99689af7488157a30aa152e23953526a605df1d77598343d7",
+  "models": [
+    {
+      "name": "viktorfa/oot_diffusion",
+      "requested_ref": "viktorfa/oot_diffusion:9f8fa4956970dde99689af7488157a30aa152e23953526a605df1d77598343d7",
+      "selected_version": "9f8fa4956970dde99689af7488157a30aa152e23953526a605df1d77598343d7",
+      "pinned_version": "9f8fa4956970dde99689af7488157a30aa152e23953526a605df1d77598343d7",
+      "latest_version": "9f8fa4956970dde99689af7488157a30aa152e23953526a605df1d77598343d7",
+      "owner": "viktorfa",
+      "visibility": "public"
+    },
+    {
+      "name": "lucataco/remove-bg",
+      "requested_ref": "lucataco/remove-bg",
+      "selected_version": "95fcc2a26d3899cd6c2691c900465aaeff466285a65c14638cc5f36f34befaf1",
+      "pinned_version": null,
+      "latest_version": "95fcc2a26d3899cd6c2691c900465aaeff466285a65c14638cc5f36f34befaf1",
+      "owner": "lucataco",
+      "visibility": "public"
+    },
+    {
+      "name": "andreasjansson/clip-features",
+      "requested_ref": "andreasjansson/clip-features",
+      "selected_version": "75b33f253f7714a281ad3e9b28f63e3232d583716ef6718f2e46641077ea040a",
+      "pinned_version": null,
+      "latest_version": "75b33f253f7714a281ad3e9b28f63e3232d583716ef6718f2e46641077ea040a",
+      "owner": "andreasjansson",
+      "visibility": "public"
+    },
+    {
+      "name": "fofr/realvisxl-v3-multi-controlnet-lora",
+      "requested_ref": "fofr/realvisxl-v3-multi-controlnet-lora",
+      "selected_version": "90a4a3604cd637cb9f1a2bdae1cfa9ed869362ca028814cdce310a78e27daade",
+      "pinned_version": null,
+      "latest_version": "90a4a3604cd637cb9f1a2bdae1cfa9ed869362ca028814cdce310a78e27daade",
+      "owner": "sdxl-based",
+      "visibility": "public"
+    },
+    {
+      "name": "black-forest-labs/flux-kontext-pro",
+      "requested_ref": "black-forest-labs/flux-kontext-pro",
+      "selected_version": "897a70f5a7dbd8a0611413b3b98cf417b45f266bd595c571a22947619d9ae462",
+      "pinned_version": null,
+      "latest_version": "897a70f5a7dbd8a0611413b3b98cf417b45f266bd595c571a22947619d9ae462",
+      "owner": "black-forest-labs",
+      "visibility": "public"
+    }
+  ]
+}

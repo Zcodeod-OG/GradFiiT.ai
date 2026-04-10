@@ -71,7 +71,7 @@ class GarmentProcessor:
         """Remove background from a garment image using Replicate remove-bg.
 
         Works for both flat-lay garment photos and person-wearing-garment
-        photos. IDM-VTON handles on-body references well, so a clean
+        photos. OOTDiffusion handles on-body references well, so a clean
         background-removed image is sufficient for garment extraction.
 
         Args:

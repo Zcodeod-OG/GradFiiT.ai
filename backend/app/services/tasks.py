@@ -18,6 +18,9 @@ celery_app.conf.update(
     enable_utc=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    # API paths never await Celery task results; disabling result storage avoids
+    # hard dependency on result backend connectivity during dispatch.
+    task_ignore_result=True,
 )
 
 
@@ -27,6 +30,7 @@ celery_app.conf.update(
     max_retries=2,
     soft_time_limit=settings.TRYON_SOFT_TIME_LIMIT_SECONDS,
     time_limit=settings.TRYON_HARD_TIME_LIMIT_SECONDS,
+    ignore_result=True,
 )
 def process_tryon_task(
     self,
@@ -35,6 +39,7 @@ def process_tryon_task(
     garment_image_url: str,
     garment_description: str,
     quality: str,
+    garment_category: str | None = None,
     preprocessed_garment_url: str | None = None,
     mode: str = "2d",
 ):
@@ -46,6 +51,7 @@ def process_tryon_task(
             garment_image_url=garment_image_url,
             garment_description=garment_description,
             quality=quality,
+            garment_category=garment_category,
             preprocessed_garment_url=preprocessed_garment_url,
             mode=mode,
             raise_on_error=True,
@@ -67,6 +73,7 @@ def process_tryon_task(
     retry_backoff=True,
     retry_jitter=True,
     max_retries=2,
+    ignore_result=True,
 )
 def process_garment_task(self, garment_id: int):
     """Celery task for preprocessing garment metadata."""

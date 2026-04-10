@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { uploadApi, userApi } from "@/lib/api"
+import { getApiErrorMessage } from "@/lib/api-error"
 import { useAuth } from "@/lib/auth"
 import { TIER_LABELS, TIER_TO_ALLOWED_MODES, type SubscriptionTier, type TryOnMode } from "@/lib/plans"
 
@@ -78,28 +79,22 @@ export default function LoginPage() {
       }
       router.push("/")
     } catch (err: unknown) {
-      const message =
-        typeof err === "object" &&
-        err !== null &&
-        "response" in err &&
-        typeof (err as { response?: { data?: { detail?: string } } }).response?.data?.detail === "string"
-          ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
-          : "Authentication failed"
-      toast.error(message)
+      toast.error(getApiErrorMessage(err, "Authentication failed"))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen flex items-center justify-center px-4 py-10">
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_15%_10%,oklch(0.76_0.09_250/.28),transparent_55%),radial-gradient(circle_at_90%_20%,oklch(0.76_0.08_190/.2),transparent_58%)]" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-transparent">
+          <h1 className="font-display text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent tracking-tight">
             ALTER.ai
           </h1>
           <p className="text-muted-foreground mt-2">
@@ -107,7 +102,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <Card>
+        <Card className="bg-white/85 border-border/80 backdrop-blur-sm">
           <CardContent className="p-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               {isRegisterMode && (
@@ -119,7 +114,7 @@ export default function LoginPage() {
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                    className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                     placeholder="John Doe"
                   />
                 </div>
@@ -133,7 +128,7 @@ export default function LoginPage() {
                       setSubscriptionTier(tier)
                       ensurePreferredModeForTier(tier)
                     }}
-                    className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                    className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                   >
                     {(Object.keys(TIER_LABELS) as SubscriptionTier[]).map((tier) => (
                       <option key={tier} value={tier}>
@@ -149,7 +144,7 @@ export default function LoginPage() {
                     id="preferredMode"
                     value={preferredMode}
                     onChange={(e) => setPreferredMode(e.target.value as TryOnMode)}
-                    className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                    className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                   >
                     {tierAllowedModes.map((mode) => (
                       <option key={mode} value={mode}>
@@ -160,7 +155,7 @@ export default function LoginPage() {
                 </div>
 
                 {tierHas3d && preferredMode === "3d" ? (
-                  <div className="space-y-3 rounded-md border border-border p-3">
+                  <div className="space-y-3 rounded-lg border border-border/80 bg-white/70 p-3">
                     <p className="text-sm font-medium">3D Avatar Setup</p>
                     <div>
                       <Label htmlFor="avatarFile">Person Image</Label>
@@ -169,7 +164,7 @@ export default function LoginPage() {
                         type="file"
                         accept="image/png,image/jpeg,image/webp"
                         onChange={(e) => setAvatarFile(e.target.files?.[0] ?? null)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                        className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                       />
                     </div>
                     <div>
@@ -181,7 +176,7 @@ export default function LoginPage() {
                         max="250"
                         value={avatarHeightCm}
                         onChange={(e) => setAvatarHeightCm(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                        className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                         placeholder="170"
                       />
                     </div>
@@ -192,7 +187,7 @@ export default function LoginPage() {
                         type="text"
                         value={avatarBodyType}
                         onChange={(e) => setAvatarBodyType(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                        className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                         placeholder="athletic / slim / regular"
                       />
                     </div>
@@ -203,7 +198,7 @@ export default function LoginPage() {
                         type="text"
                         value={avatarGender}
                         onChange={(e) => setAvatarGender(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                        className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                         placeholder="woman / man / non-binary"
                       />
                     </div>
@@ -214,7 +209,7 @@ export default function LoginPage() {
                         type="text"
                         value={avatarNotes}
                         onChange={(e) => setAvatarNotes(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                        className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                         placeholder="broad shoulders, longer torso, etc."
                       />
                     </div>
@@ -229,7 +224,7 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                  className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                   placeholder="you@example.com"
                   required
                 />
@@ -241,7 +236,7 @@ export default function LoginPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                  className="w-full mt-1 px-3 py-2 border border-border/80 rounded-lg bg-white/80 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
                   placeholder="Enter password"
                   required
                 />

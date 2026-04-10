@@ -13,14 +13,13 @@ const socials = [
 export function Footer() {
   return (
     <footer className="mt-24 relative">
-      {/* Gradient divider at top */}
       <div className="gradient-divider" />
 
-      <div className="glass-effect border-t-0">
-        <div className="container mx-auto px-4 py-12">
+      <div className="surface-panel border-t-0 rounded-none">
+        <div className="container-main py-12">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
             <div>
-              <h4 className="font-semibold mb-4 text-foreground">Product</h4>
+              <h4 className="font-display font-bold tracking-tight mb-4 text-foreground">Product</h4>
               <ul className="space-y-2">
                 <li><a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a></li>
                 <li><a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a></li>
@@ -28,7 +27,7 @@ export function Footer() {
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-4 text-foreground">Company</h4>
+              <h4 className="font-display font-bold tracking-tight mb-4 text-foreground">Company</h4>
               <ul className="space-y-2">
                 <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">About</a></li>
                 <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Blog</a></li>
@@ -36,7 +35,7 @@ export function Footer() {
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-4 text-foreground">Resources</h4>
+              <h4 className="font-display font-bold tracking-tight mb-4 text-foreground">Resources</h4>
               <ul className="space-y-2">
                 <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Documentation</a></li>
                 <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Help Center</a></li>
@@ -44,7 +43,7 @@ export function Footer() {
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-4 text-foreground">Legal</h4>
+              <h4 className="font-display font-bold tracking-tight mb-4 text-foreground">Legal</h4>
               <ul className="space-y-2">
                 <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Privacy</a></li>
                 <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Terms</a></li>
@@ -53,12 +52,12 @@ export function Footer() {
             </div>
           </div>
 
-          <div className="border-t border-glass-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <div className="size-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                <span className="text-white font-bold text-sm">A</span>
+                <span className="text-white font-display font-bold text-sm">A</span>
               </div>
-              <span className="font-bold text-foreground">ALTER.ai</span>
+              <span className="font-display font-bold tracking-tight text-foreground">ALTER.ai</span>
             </div>
 
             <div className="flex items-center gap-3">
@@ -66,7 +65,7 @@ export function Footer() {
                 <motion.a
                   key={social.label}
                   href={social.href}
-                  className="size-10 rounded-full glass-effect flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
+                  className="size-10 rounded-full bg-white/75 border border-border flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
                   whileHover={{ scale: 1.15, y: -3 }}
                   whileTap={{ scale: 0.95 }}
                   aria-label={social.label}

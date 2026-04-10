@@ -47,7 +47,7 @@
 #### **Phase 2: AI/ML Pipeline (95% Complete)**
 1. **5-Stage Try-On Pipeline**
    - **Stage 1:** Garment extraction & preprocessing via Replicate API
-   - **Stage 2:** IDM-VTON (Implicit Dressed Model Virtual Try-On)
+   - **Stage 2:** OOTDiffusion virtual try-on model
    - **Stage 3:** Quality gate with multi-metric validation (CLIP + color + edge metrics)
    - **Stage 4:** SDXL + ControlNet conditional refinement (quality-mode only)
    - **Stage 5:** Quality rating computation
@@ -274,7 +274,7 @@
 #### **2. AI/ML Model Costs (External APIs)**
 | Service | Usage | Cost/Month |
 |---------|-------|-----------|
-| **Replicate API** | IDM-VTON + SDXL | ~$200-500* |
+| **Replicate API** | OOTDiffusion + SDXL | ~$200-500* |
 | **Anthropic/OpenAI** | (if analytics added) | $0 (optional) |
 | **Hugging Face** | Model hosting (if not self-hosted) | $0-50 |
 | **SUBTOTAL** | **AI Services** | **$200-550/month** |

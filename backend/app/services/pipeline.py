@@ -2,7 +2,7 @@
 ALTER.AI - 5-Stage Virtual Try-On Pipeline
 
 Stage 0: Garment Extraction (lucataco/remove-bg)
-Stage 1: IDM-VTON (cuuupid/idm-vton) — virtual try-on
+Stage 1: OOTDiffusion (configurable Replicate model) — virtual try-on
 Stage 2: Quality Gate (andreasjansson/clip-features) — CLIP similarity
 Stage 3: RealVisXL V3 + Multi-ControlNet (Depth + OpenPose + HED) — refinement
          Fallback: FLUX Kontext Pro — text-guided editing
@@ -43,7 +43,7 @@ class PipelineConfig:
             "skip_quality_gate": True,
             "skip_refinement": True,
             "skip_rating": False,
-            "description": "IDM-VTON only, no refinement",
+            "description": "OOTDiffusion only, no refinement",
         },
         "balanced": {
             "skip_extraction": False,
@@ -124,21 +124,23 @@ class PipelineService:
             }
 
     # ──────────────────────────────────────────────────────────
-    # Stage 1: IDM-VTON
+    # Stage 1: OOTDiffusion
     # ──────────────────────────────────────────────────────────
 
-    def run_stage1_idm_vton(
+    def run_stage1_oot_diffusion(
         self,
         person_image_url: str,
         garment_image_url: str,
         garment_description: str = "a garment",
+        garment_category: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Run IDM-VTON for virtual try-on."""
-        logger.info("Pipeline Stage 1: Starting IDM-VTON")
+        """Run OOTDiffusion for virtual try-on."""
+        logger.info("Pipeline Stage 1: Starting OOTDiffusion")
         result = self.replicate_service.generate_tryon(
             person_image_url=person_image_url,
             garment_image_url=garment_image_url,
             garment_description=garment_description,
+            garment_category=garment_category,
             webhook_url=None,
         )
 
@@ -146,7 +148,7 @@ class PipelineService:
         if isinstance(output_url, list):
             output_url = output_url[0]
 
-        logger.info(f"Pipeline Stage 1: IDM-VTON completed → {output_url}")
+        logger.info(f"Pipeline Stage 1: OOTDiffusion completed → {output_url}")
         return {"output_url": output_url, "status": "succeeded"}
 
     # ──────────────────────────────────────────────────────────
@@ -251,7 +253,7 @@ class PipelineService:
             output = replicate_client.run(
                 REALVISXL_MULTI_CONTROLNET,
                 input={
-                    # img2img: use the IDM-VTON output as the starting image
+                    # img2img: use the Stage-1 OOTDiffusion output as the starting image
                     "image": stage1_image_url,
                     "prompt": prompt,
                     "negative_prompt": negative_prompt,
@@ -392,6 +394,7 @@ class PipelineService:
         person_image_url: str,
         garment_image_url: str,
         garment_description: str = "a garment",
+        garment_category: Optional[str] = None,
         quality: str = "balanced",
         preprocessed_garment_url: Optional[str] = None,
         on_stage_update=None,
@@ -426,14 +429,15 @@ class PipelineService:
             if on_stage_update:
                 on_stage_update("garment_extracted")
 
-        # ── Stage 1: IDM-VTON ────────────────────────────────
+        # ── Stage 1: OOTDiffusion ────────────────────────────
         if on_stage_update:
             on_stage_update("stage1_processing")
         s1_start = time.time()
-        stage1_result = self.run_stage1_idm_vton(
+        stage1_result = self.run_stage1_oot_diffusion(
             person_image_url=person_image_url,
             garment_image_url=extracted_garment_url,
             garment_description=garment_description,
+            garment_category=garment_category,
         )
         timings["stage1_vton_seconds"] = round(time.time() - s1_start, 1)
         stage1_url = stage1_result["output_url"]

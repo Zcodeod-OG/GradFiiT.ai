@@ -155,6 +155,16 @@ class Settings(BaseSettings):
         ...,
         description="Replicate API token for virtual try-on"
     )
+
+    TRYON_STAGE1_MODEL: str = Field(
+        default="CHANGE_ME_OOT_MODEL",
+        description="Replicate model slug/version for Stage-1 OOTDiffusion try-on"
+    )
+
+    OOT_DIFFUSION_DEFAULT_CATEGORY: str = Field(
+        default="upperbody",
+        description="Default garment category sent to OOTDiffusion (upperbody, lowerbody, dress)"
+    )
     
     # ==================== Celery Settings ====================
     
@@ -174,7 +184,7 @@ class Settings(BaseSettings):
     )
 
     ALLOW_THREAD_FALLBACK_FOR_TRYON: bool = Field(
-        default=False,
+        default=True,
         description="Allow thread fallback when Celery dispatch fails"
     )
 

@@ -35,34 +35,32 @@ export function Navbar() {
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
         isScrolled
-          ? "bg-background/95 backdrop-blur-md border-b border-border shadow-sm"
+          ? "bg-white/80 backdrop-blur-xl border-b border-border/70 shadow-[0_10px_30px_oklch(0.33_0.03_250/0.09)]"
           : "bg-transparent"
       )}
     >
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="container-main px-2 sm:px-4">
         <div className="flex items-center justify-between h-16 md:h-20">
-          {/* Logo */}
           <motion.a
             href="/"
-            className="flex items-center gap-2"
+            className="flex items-center gap-3"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <div className="size-8 md:size-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <span className="text-white font-bold text-sm md:text-base">A</span>
+            <div className="size-9 md:size-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_8px_20px_oklch(0.56_0.13_250/0.28)]">
+              <span className="text-white font-display font-bold text-sm md:text-base">A</span>
             </div>
-            <span className="text-xl md:text-2xl font-bold text-foreground">
+            <span className="text-xl md:text-2xl font-display font-bold tracking-tight text-foreground">
               ALTER.ai
             </span>
           </motion.a>
 
-          {/* Desktop Navigation Links */}
           <div className="hidden md:flex items-center gap-8">
             {navLinks.map((link, index) => (
               <motion.a
                 key={link.href}
                 href={link.href}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors relative"
+                className="relative text-sm font-semibold tracking-[0.02em] text-muted-foreground hover:text-foreground transition-colors"
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 + 0.3 }}
@@ -70,7 +68,7 @@ export function Navbar() {
               >
                 {link.label}
                 <motion.span
-                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
+                  className="absolute -bottom-1 left-0 right-0 h-0.5 bg-foreground"
                   initial={{ scaleX: 0 }}
                   whileHover={{ scaleX: 1 }}
                   transition={{ duration: 0.3 }}
@@ -79,7 +77,6 @@ export function Navbar() {
             ))}
           </div>
 
-          {/* Desktop Buttons */}
           <div className="hidden md:flex items-center gap-3">
             <motion.div
               initial={{ opacity: 0, x: 20 }}
@@ -89,7 +86,7 @@ export function Navbar() {
               <Link href="/login">
                 <Button
                   variant="ghost"
-                  className="text-foreground hover:bg-accent/50"
+                  className="text-foreground hover:bg-secondary"
                 >
                   Login
                 </Button>
@@ -101,16 +98,15 @@ export function Navbar() {
               transition={{ delay: 0.6 }}
             >
               <Link href="/try">
-                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <Button className="h-10 px-5">
                   Get Started
                 </Button>
               </Link>
             </motion.div>
           </div>
 
-          {/* Mobile Hamburger Button */}
           <motion.button
-            className="md:hidden p-2 rounded-md text-foreground hover:bg-accent/50 transition-colors"
+            className="md:hidden p-2 rounded-md text-foreground hover:bg-secondary transition-colors"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             whileTap={{ scale: 0.95 }}
             aria-label="Toggle menu"
@@ -146,7 +142,6 @@ export function Navbar() {
       <AnimatePresence>
         {isMobileMenuOpen && (
           <>
-            {/* Backdrop */}
             <motion.div
               className="fixed inset-0 bg-background/80 backdrop-blur-sm md:hidden"
               initial={{ opacity: 0 }}
@@ -155,20 +150,19 @@ export function Navbar() {
               onClick={() => setIsMobileMenuOpen(false)}
             />
 
-            {/* Menu Panel */}
             <motion.div
-              className="fixed top-16 left-0 right-0 bg-background/95 backdrop-blur-md border-b border-border md:hidden"
+              className="fixed top-16 left-0 right-0 bg-white/90 backdrop-blur-xl border-b border-border/70 md:hidden"
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
             >
-              <div className="container mx-auto px-4 py-6 space-y-4">
+              <div className="container-main px-2 py-6 space-y-4">
                 {navLinks.map((link, index) => (
                   <motion.a
                     key={link.href}
                     href={link.href}
-                    className="block text-base font-medium text-foreground hover:text-primary transition-colors py-2"
+                    className="block text-base font-semibold text-foreground hover:text-primary transition-colors py-2"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.1 }}

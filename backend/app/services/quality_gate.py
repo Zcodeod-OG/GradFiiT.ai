@@ -27,7 +27,7 @@ QUALITY_THRESHOLDS = {
 
 
 class QualityGateService:
-    """Evaluates IDM-VTON output quality using CLIP similarity."""
+    """Evaluates Stage-1 try-on output quality using CLIP similarity."""
 
     def __init__(self):
         self.garment_processor = get_garment_processor()
@@ -137,7 +137,7 @@ class QualityGateService:
 
         Args:
             garment_image_url: URL of the original/extracted garment.
-            tryon_result_url: URL of the IDM-VTON output.
+            tryon_result_url: URL of the Stage-1 try-on output.
             garment_embedding: Pre-computed garment embedding (optional).
 
         Returns:

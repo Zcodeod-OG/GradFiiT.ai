@@ -116,18 +116,18 @@ export function HowItWorksSection() {
     <section
       id="how-it-works"
       ref={sectionRef}
-      className="py-24 relative overflow-hidden"
+      className="section-spacing relative overflow-hidden"
     >
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-purple-900/5 to-background" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/40 to-transparent" />
 
-      <div className="container mx-auto px-4 relative z-10">
+      <div className="container-main relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6 }}
           className="text-center mb-16 space-y-4"
         >
-          <h2 className="text-4xl md:text-5xl font-bold text-balance">
+          <h2 className="font-display text-4xl md:text-5xl font-bold text-balance tracking-tight">
             How It{" "}
             <span className="text-gradient">Works</span>
           </h2>
@@ -140,9 +140,7 @@ export function HowItWorksSection() {
           <div className="grid md:grid-cols-3 gap-8 relative">
             {/* Animated connection line that fills with scroll */}
             <div className="hidden md:block absolute top-[60px] left-[16%] right-[16%] h-[2px]">
-              {/* Background track */}
               <div className="absolute inset-0 bg-border/30 rounded-full" />
-              {/* Animated fill */}
               <motion.div
                 className="absolute inset-0 bg-gradient-to-r from-primary via-accent to-primary rounded-full"
                 style={{ scaleX: lineScaleX, transformOrigin: "left" }}

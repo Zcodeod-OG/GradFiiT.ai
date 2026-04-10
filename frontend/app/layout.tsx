@@ -1,17 +1,20 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Poppins, Inter } from "next/font/google"
+import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
-const poppins = Poppins({
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  weight: ["400", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-body",
 })
 
-const inter = Inter({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
+  weight: ["500", "700"],
+  variable: "--font-display",
 })
 
 export const metadata: Metadata = {
@@ -27,9 +30,9 @@ export default function RootLayout({
   return (
       <html lang="en">
       <body
-          className={`${inter.className} antialiased bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 text-gray-800`}
+          className={`${plusJakarta.variable} ${spaceGrotesk.variable} antialiased bg-background text-foreground`}
       >
-      <div className={poppins.className}>{children}</div>
+      {children}
       <Analytics />
       <Toaster />
       </body>

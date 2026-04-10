@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   ArrowRight,
@@ -75,9 +75,9 @@ const statusLabelMap: Record<string, string> = {
 }
 
 const getStatusBadgeClass = (status: string): string => {
-  if (status === "completed") return "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-  if (status === "failed") return "bg-red-500/20 text-red-300 border-red-500/40"
-  return "bg-sky-500/20 text-sky-300 border-sky-500/40"
+  if (status === "completed") return "bg-emerald-100 text-emerald-700 border-emerald-200"
+  if (status === "failed") return "bg-red-100 text-red-700 border-red-200"
+  return "bg-sky-100 text-sky-700 border-sky-200"
 }
 
 const garmentStatusLabelMap: Record<string, string> = {
@@ -89,9 +89,9 @@ const garmentStatusLabelMap: Record<string, string> = {
 }
 
 const getGarmentStatusBadgeClass = (status: string): string => {
-  if (status === "ready") return "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-  if (status === "failed") return "bg-red-500/20 text-red-300 border-red-500/40"
-  return "bg-amber-500/20 text-amber-300 border-amber-500/40"
+  if (status === "ready") return "bg-emerald-100 text-emerald-700 border-emerald-200"
+  if (status === "failed") return "bg-red-100 text-red-700 border-red-200"
+  return "bg-amber-100 text-amber-700 border-amber-200"
 }
 
 const formatTimeAgo = (value: string): string => {
@@ -137,7 +137,7 @@ function PublicLanding() {
   }, [])
 
   return (
-    <div className="min-h-screen dark scroll-smooth">
+    <div className="min-h-screen scroll-smooth">
       <Navbar />
       <main>
         <HeroSection />
@@ -182,11 +182,17 @@ export default function Page() {
   const [tryons, setTryons] = useState<TryOnItem[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [feedVisibleCount, setFeedVisibleCount] = useState(6)
+  const [styleVibe, setStyleVibe] = useState("Street Core")
+  const [shoppingMoment, setShoppingMoment] = useState("Weekend Drop")
+  const [colorPalette, setColorPalette] = useState("Neutrals")
+  const [compareReveal, setCompareReveal] = useState(54)
   const [newGarmentName, setNewGarmentName] = useState("")
   const [newGarmentCategory, setNewGarmentCategory] = useState("")
   const [newGarmentDescription, setNewGarmentDescription] = useState("")
   const [newGarmentFile, setNewGarmentFile] = useState<File | null>(null)
   const [isSavingPreferences, setIsSavingPreferences] = useState(false)
+  const feedSentinelRef = useRef<HTMLDivElement | null>(null)
 
   const navItems: Array<{ key: NavKey; label: string; icon: typeof LayoutDashboard }> = [
     { key: "overview", label: "Dashboard", icon: LayoutDashboard },
@@ -264,6 +270,62 @@ export default function Page() {
   const inProgressCount = tryons.filter(
     (item) => item.status !== "completed" && item.status !== "failed"
   ).length
+  const completionRate = tryons.length > 0 ? Math.round((completedCount / tryons.length) * 100) : 0
+
+  const categoryBreakdown = useMemo(() => {
+    const counts = new Map<string, number>()
+    garments.forEach((garment) => {
+      const key = (garment.category || "Uncategorized").trim() || "Uncategorized"
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+  }, [garments])
+
+  const behaviorPersona = useMemo(() => {
+    if (completedCount >= 18) return "Trend Sniper"
+    if (inProgressCount >= 4) return "Look Builder"
+    if (garments.length >= 8) return "Closet Curator"
+    return "Style Explorer"
+  }, [completedCount, inProgressCount, garments.length])
+
+  const compareSource = useMemo(
+    () =>
+      tryons.find((item) => item.result_image_url && item.garment_image_url) ||
+      tryons.find((item) => item.result_image_url),
+    [tryons]
+  )
+
+  const compareLeftImage = compareSource?.garment_image_url || garments[0]?.image_url || null
+  const compareRightImage = compareSource?.result_image_url || tryons[0]?.result_image_url || null
+  const visibleFeedItems = tryons.slice(0, Math.min(feedVisibleCount, tryons.length))
+  const recommendedGarments = garments.slice(0, 6)
+
+  useEffect(() => {
+    setFeedVisibleCount(6)
+  }, [activeNav, tryons.length])
+
+  useEffect(() => {
+    if (activeNav !== "overview") return
+
+    const sentinel = feedSentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return
+        setFeedVisibleCount((current) => Math.min(current + 4, tryons.length))
+      },
+      { rootMargin: "220px 0px" }
+    )
+
+    observer.observe(sentinel)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [activeNav, tryons.length])
 
   const handleUploadGarment = async () => {
     if (!newGarmentName.trim()) {
@@ -340,13 +402,21 @@ export default function Page() {
   }
 
   return (
-    <div className="min-h-screen bg-background gradient-mesh">
-      <div className="mx-auto max-w-7xl p-4 md:p-6">
+    <div className="min-h-screen bg-background gradient-mesh relative overflow-x-clip">
+      <div className="pointer-events-none absolute -top-36 -left-20 h-72 w-72 rounded-full bg-[radial-gradient(circle,_oklch(0.78_0.19_255_/_0.32)_0%,_transparent_72%)] blur-2xl" />
+      <div className="pointer-events-none absolute top-36 -right-16 h-96 w-96 rounded-full bg-[radial-gradient(circle,_oklch(0.84_0.19_150_/_0.32)_0%,_transparent_72%)] blur-2xl" />
+
+      <div className="mx-auto max-w-7xl p-4 md:p-6 relative">
         <div className="grid gap-4 md:grid-cols-[250px_1fr]">
-          <aside className="rounded-2xl border border-border/70 bg-card/70 backdrop-blur-md p-3 md:p-4 md:sticky md:top-6 md:h-[calc(100vh-3rem)]">
+          <aside className="rounded-2xl border border-border/70 bg-white/65 backdrop-blur-xl p-3 md:p-4 md:sticky md:top-6 md:h-[calc(100vh-3rem)] shadow-[0_18px_48px_oklch(0.28_0.06_250/_0.14)]">
             <div className="flex items-center gap-2 px-2 pb-4 border-b border-border/70">
-              <Sparkles className="size-4 text-primary" />
-              <p className="font-semibold">ALTER.ai Home</p>
+              <div className="size-8 rounded-xl bg-gradient-to-br from-primary/90 via-sky-500 to-emerald-400 text-white flex items-center justify-center shadow-md">
+                <Sparkles className="size-4" />
+              </div>
+              <div>
+                <p className="font-semibold leading-none">ALTER.ai Home</p>
+                <p className="text-[11px] text-muted-foreground mt-1">{behaviorPersona}</p>
+              </div>
             </div>
 
             <div className="mt-4 space-y-1">
@@ -360,8 +430,8 @@ export default function Page() {
                     className={[
                       "w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
                       isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "hover:bg-secondary text-muted-foreground hover:text-foreground",
+                        ? "bg-gradient-to-r from-primary to-sky-500 text-white shadow-[0_10px_28px_oklch(0.55_0.14_252/_0.25)]"
+                        : "hover:bg-secondary/80 text-muted-foreground hover:text-foreground",
                     ].join(" ")}
                   >
                     <Icon className="size-4" />
@@ -371,11 +441,11 @@ export default function Page() {
               })}
             </div>
 
-            <div className="mt-6 rounded-xl border border-border/70 p-3 bg-secondary/35">
+            <div className="mt-6 rounded-xl border border-border/70 p-3 bg-gradient-to-br from-white/80 to-sky-50/70">
               <p className="text-sm font-medium">Quick actions</p>
               <div className="mt-3 space-y-2">
                 <Link href={`/try?mode=${preferredMode}`}>
-                  <Button size="sm" className="w-full justify-start gap-2">
+                  <Button size="sm" className="w-full justify-start gap-2 bg-gradient-to-r from-primary to-sky-500 text-white">
                     <Camera className="size-4" />
                     Start Try-On
                   </Button>
@@ -383,7 +453,7 @@ export default function Page() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start gap-2"
+                  className="w-full justify-start gap-2 bg-white/80"
                   onClick={() => setActiveNav("closet")}
                 >
                   <Plus className="size-4" />
@@ -391,19 +461,31 @@ export default function Page() {
                 </Button>
               </div>
             </div>
+
+            <div className="mt-4 rounded-xl border border-border/70 bg-white/70 p-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Style Pulse</p>
+              <p className="mt-2 text-xl font-semibold">{completionRate}%</p>
+              <p className="text-xs text-muted-foreground">Completed looks this cycle</p>
+              <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-primary via-sky-500 to-emerald-400 transition-all duration-500"
+                  style={{ width: `${completionRate}%` }}
+                />
+              </div>
+            </div>
           </aside>
 
           <main className="space-y-4 md:space-y-6">
-            <Card className="bg-card/70 backdrop-blur-md border-border/70">
+            <Card className="bg-white/70 backdrop-blur-xl border-border/70 overflow-hidden">
               <CardContent className="px-5 py-4 md:px-6 md:py-5">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Welcome back</p>
-                    <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+                    <p className="text-xs uppercase tracking-[0.18em] text-sky-700/80">Closet control center</p>
+                    <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-balance">
                       {user?.full_name || user?.email || "Your personal closet"}
                     </h1>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Manage your wardrobe, track try-ons, and launch new looks in one place.
+                    <p className="mt-1 text-sm text-muted-foreground max-w-2xl">
+                      Visual feed, smart picks, and one-tap try-ons tuned to how you actually shop.
                     </p>
                   </div>
 
@@ -411,7 +493,7 @@ export default function Page() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-2"
+                      className="gap-2 bg-white/80"
                       onClick={() => void refreshDashboard()}
                       disabled={isRefreshing}
                     >
@@ -423,7 +505,7 @@ export default function Page() {
                       Refresh
                     </Button>
                     <Link href={`/try?mode=${preferredMode}`}>
-                      <Button size="sm" className="gap-2">
+                      <Button size="sm" className="gap-2 bg-gradient-to-r from-primary to-sky-500 text-white">
                         <Camera className="size-4" />
                         New Try-On
                       </Button>
@@ -438,110 +520,290 @@ export default function Page() {
             </Card>
 
             <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Card className="bg-card/70 border-border/70">
+              <Card className="bg-gradient-to-br from-blue-50 to-white border-blue-200/60">
                 <CardContent className="px-5 py-4">
-                  <p className="text-xs text-muted-foreground">Items in Closet</p>
-                  <p className="mt-2 text-2xl font-semibold">{garments.length}</p>
+                  <p className="text-xs text-sky-700/80 uppercase tracking-[0.14em]">Items in Closet</p>
+                  <p className="mt-2 text-2xl font-semibold text-sky-950">{garments.length}</p>
                 </CardContent>
               </Card>
-              <Card className="bg-card/70 border-border/70">
+              <Card className="bg-gradient-to-br from-violet-50 to-white border-violet-200/60">
                 <CardContent className="px-5 py-4">
-                  <p className="text-xs text-muted-foreground">Total Try-Ons</p>
-                  <p className="mt-2 text-2xl font-semibold">{tryons.length}</p>
+                  <p className="text-xs text-violet-700/80 uppercase tracking-[0.14em]">Total Try-Ons</p>
+                  <p className="mt-2 text-2xl font-semibold text-violet-950">{tryons.length}</p>
                 </CardContent>
               </Card>
-              <Card className="bg-card/70 border-border/70">
+              <Card className="bg-gradient-to-br from-emerald-50 to-white border-emerald-200/70">
                 <CardContent className="px-5 py-4">
-                  <p className="text-xs text-muted-foreground">Completed Results</p>
-                  <p className="mt-2 text-2xl font-semibold">{completedCount}</p>
+                  <p className="text-xs text-emerald-700/80 uppercase tracking-[0.14em]">Completed Results</p>
+                  <p className="mt-2 text-2xl font-semibold text-emerald-950">{completedCount}</p>
                 </CardContent>
               </Card>
-              <Card className="bg-card/70 border-border/70">
+              <Card className="bg-gradient-to-br from-amber-50 to-white border-amber-200/70">
                 <CardContent className="px-5 py-4">
-                  <p className="text-xs text-muted-foreground">In Progress</p>
-                  <p className="mt-2 text-2xl font-semibold">{inProgressCount}</p>
+                  <p className="text-xs text-amber-700/80 uppercase tracking-[0.14em]">In Progress</p>
+                  <p className="mt-2 text-2xl font-semibold text-amber-950">{inProgressCount}</p>
                 </CardContent>
               </Card>
             </section>
 
             {activeNav === "overview" && (
               <section className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-                <Card className="bg-card/70 border-border/70">
+                <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                   <CardHeader>
-                    <CardTitle className="text-lg">Your Closet Snapshot</CardTitle>
-                    <CardDescription>Recent items you can try on instantly.</CardDescription>
+                    <CardTitle className="text-lg">Runway Feed</CardTitle>
+                    <CardDescription>
+                      Infinite visual stream based on your latest try-ons.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {garments.length === 0 ? (
+                    {tryons.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-border/70 p-6 text-center text-muted-foreground">
-                        Your closet is empty. Add your first garment in the My Closet tab.
+                        No looks in your feed yet. Launch your first try-on to start building your runway.
+                        <div className="mt-4">
+                          <Link href={`/try?mode=${preferredMode}`}>
+                            <Button className="bg-gradient-to-r from-primary to-sky-500 text-white">
+                              Start Feed <ArrowRight className="size-4" />
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
                     ) : (
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {garments.slice(0, 6).map((garment) => (
-                          <div key={garment.id} className="rounded-lg border border-border/70 p-2 bg-background/40">
-                            <div className="aspect-square overflow-hidden rounded-md bg-muted/20">
+                      <div className="space-y-3">
+                        {visibleFeedItems.map((item, index) => (
+                          <motion.article
+                            key={item.id}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.28, delay: index * 0.03 }}
+                            className="rounded-2xl border border-border/70 bg-white/80 p-3"
+                          >
+                            <div className="grid gap-3 sm:grid-cols-[140px_1fr_auto] sm:items-center">
+                              <div className="aspect-[4/5] sm:aspect-square overflow-hidden rounded-lg bg-muted/25">
+                                {item.result_image_url || item.garment_image_url ? (
+                                  <img
+                                    src={item.result_image_url || item.garment_image_url || ""}
+                                    alt={`Try-on preview ${item.id}`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-full w-full flex items-center justify-center">
+                                    <Shirt className="size-6 text-muted-foreground" />
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="min-w-0">
+                                <p className="text-xs uppercase tracking-[0.16em] text-sky-700/80">Look #{item.id}</p>
+                                <div className="mt-1 flex items-center gap-2">
+                                  <Badge className={getStatusBadgeClass(item.status)}>
+                                    {statusLabelMap[item.status] || item.status}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">{formatTimeAgo(item.created_at)}</span>
+                                </div>
+                                {typeof item.rating_score === "number" ? (
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    Match score {item.rating_score.toFixed(1)}
+                                  </p>
+                                ) : null}
+                              </div>
+
+                              <Link href={`/try?mode=${preferredMode}`}>
+                                <Button variant="outline" size="sm" className="bg-white/80 w-full sm:w-auto">
+                                  Remix
+                                </Button>
+                              </Link>
+                            </div>
+                          </motion.article>
+                        ))}
+
+                        {visibleFeedItems.length < tryons.length ? (
+                          <div ref={feedSentinelRef} className="py-4 text-center text-xs text-muted-foreground">
+                            Loading more looks...
+                          </div>
+                        ) : (
+                          <div className="py-4 text-center text-xs text-muted-foreground">
+                            You reached the end of your current feed.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <div className="space-y-4">
+                  <Card className="bg-white/72 backdrop-blur-lg border-border/70">
+                    <CardHeader>
+                      <CardTitle className="text-lg">Personalization Lab</CardTitle>
+                      <CardDescription>Quiz + behavior profile powering your recommendations.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-5">
+                      <div className="rounded-xl border border-border/70 bg-gradient-to-r from-sky-50 to-emerald-50 p-3">
+                        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Behavior Persona</p>
+                        <p className="mt-1 text-lg font-semibold">{behaviorPersona}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Completion rate: {completionRate}%</p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Vibe</p>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          {["Street Core", "Minimal Luxe", "Y2K Flash", "Athflow"].map((option) => (
+                            <button
+                              key={option}
+                              onClick={() => setStyleVibe(option)}
+                              className={[
+                                "rounded-lg border px-3 py-2 text-sm transition text-left",
+                                styleVibe === option
+                                  ? "border-primary/50 bg-primary/10 text-foreground"
+                                  : "border-border/70 bg-white/70 text-muted-foreground hover:text-foreground",
+                              ].join(" ")}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Moment</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {["Weekend Drop", "Workday", "Date Night", "Travel"].map((option) => (
+                            <button
+                              key={option}
+                              onClick={() => setShoppingMoment(option)}
+                              className={[
+                                "rounded-full border px-3 py-1.5 text-xs transition",
+                                shoppingMoment === option
+                                  ? "border-sky-400/80 bg-sky-100 text-sky-900"
+                                  : "border-border/70 bg-white/70 text-muted-foreground hover:text-foreground",
+                              ].join(" ")}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Palette</p>
+                        <div className="mt-2 grid grid-cols-3 gap-2">
+                          {[
+                            { name: "Neutrals", tone: "from-zinc-200 to-zinc-50" },
+                            { name: "Bold", tone: "from-pink-400 to-orange-300" },
+                            { name: "Cool", tone: "from-sky-500 to-blue-300" },
+                          ].map((option) => (
+                            <button
+                              key={option.name}
+                              onClick={() => setColorPalette(option.name)}
+                              className={[
+                                "rounded-lg border px-2 py-2 text-xs",
+                                colorPalette === option.name ? "border-primary/55" : "border-border/70",
+                              ].join(" ")}
+                            >
+                              <span
+                                className={`block h-6 rounded-md bg-gradient-to-r ${option.tone} mb-1`}
+                              />
+                              {option.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-border/70 bg-white/75 p-3">
+                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">AI direction</p>
+                        <p className="mt-1 text-sm font-medium">{styleVibe} · {shoppingMoment} · {colorPalette}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Top closet category: {categoryBreakdown[0]?.[0] || "Build your closet"}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white/72 backdrop-blur-lg border-border/70">
+                    <CardHeader>
+                      <CardTitle className="text-lg">Try-Before-Buy</CardTitle>
+                      <CardDescription>Interactive comparison before you commit.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="rounded-2xl overflow-hidden border border-border/70 bg-muted/20">
+                        <div className="relative aspect-[4/5]">
+                          {compareLeftImage ? (
+                            <img
+                              src={compareLeftImage}
+                              alt="Original garment"
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center bg-muted/35">
+                              <Shirt className="size-8 text-muted-foreground" />
+                            </div>
+                          )}
+
+                          {compareRightImage ? (
+                            <div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${compareReveal}%` }}>
+                              <img
+                                src={compareRightImage}
+                                alt="Try-on output"
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                          ) : null}
+
+                          <div
+                            className="absolute inset-y-0 w-0.5 bg-white/85 shadow-[0_0_0_1px_oklch(0.25_0.03_250/_0.2)]"
+                            style={{ left: `${compareReveal}%` }}
+                          />
+
+                          <div className="absolute top-2 left-2 rounded-full bg-black/35 px-2 py-1 text-[10px] text-white">Original</div>
+                          <div className="absolute top-2 right-2 rounded-full bg-black/35 px-2 py-1 text-[10px] text-white">AI Fit</div>
+                        </div>
+                      </div>
+
+                      <input
+                        type="range"
+                        min={5}
+                        max={95}
+                        value={compareReveal}
+                        onChange={(event) => setCompareReveal(Number(event.target.value))}
+                        className="mt-3 w-full"
+                      />
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white/72 backdrop-blur-lg border-border/70">
+                    <CardHeader>
+                      <CardTitle className="text-lg">Closet Highlights</CardTitle>
+                      <CardDescription>Visual picks from your current wardrobe.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {recommendedGarments.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-border/70 p-4 text-center text-sm text-muted-foreground">
+                          Add a few garments to unlock visual recommendations.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                          {recommendedGarments.map((garment) => (
+                            <div key={garment.id} className="aspect-square rounded-lg overflow-hidden border border-border/70 bg-muted/20">
                               <img
                                 src={garment.image_url}
                                 alt={garment.name}
                                 className="h-full w-full object-cover"
                               />
                             </div>
-                            <p className="mt-2 text-sm font-medium truncate">{garment.name}</p>
-                            <div className="mt-1 flex items-center gap-2">
-                              <p className="text-xs text-muted-foreground truncate">
-                                {garment.category || "Uncategorized"}
-                              </p>
-                              <Badge className={getGarmentStatusBadgeClass(garment.preprocess_status)}>
-                                {garmentStatusLabelMap[garment.preprocess_status] || garment.preprocess_status}
-                              </Badge>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-card/70 border-border/70">
-                  <CardHeader>
-                    <CardTitle className="text-lg">Recent Try-Ons</CardTitle>
-                    <CardDescription>Latest run status and outcomes.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {tryons.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-border/70 p-6 text-center text-muted-foreground">
-                        No try-ons yet. Start your first one now.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {tryons.slice(0, 5).map((item) => (
-                          <div
-                            key={item.id}
-                            className="flex items-center justify-between rounded-lg border border-border/70 p-3"
-                          >
-                            <div>
-                              <p className="text-sm font-medium">Try-On #{item.id}</p>
-                              <p className="text-xs text-muted-foreground">{formatTimeAgo(item.created_at)}</p>
-                            </div>
-                            <Badge className={getStatusBadgeClass(item.status)}>
-                              {statusLabelMap[item.status] || item.status}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
               </section>
             )}
 
             {activeNav === "closet" && (
               <section className="grid gap-4 xl:grid-cols-[1fr_1.3fr]">
-                <Card className="bg-card/70 border-border/70">
+                <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                   <CardHeader>
                     <CardTitle className="text-lg">Add New Garment</CardTitle>
-                    <CardDescription>Update your closet regularly with new pieces.</CardDescription>
+                    <CardDescription>Keep your digital closet fresh with every new drop.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <Input
@@ -565,7 +827,7 @@ export default function Page() {
                       onChange={(event) => setNewGarmentFile(event.target.files?.[0] ?? null)}
                     />
                     <Button
-                      className="w-full gap-2"
+                      className="w-full gap-2 bg-gradient-to-r from-primary to-sky-500 text-white"
                       onClick={() => void handleUploadGarment()}
                       disabled={isUploading}
                     >
@@ -582,7 +844,7 @@ export default function Page() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-card/70 border-border/70">
+                <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                   <CardHeader>
                     <CardTitle className="text-lg">Closet Library</CardTitle>
                     <CardDescription>{garments.length} garments available for virtual try-on.</CardDescription>
@@ -595,9 +857,9 @@ export default function Page() {
                     ) : (
                       <div className="grid gap-3 sm:grid-cols-2">
                         {garments.map((garment) => (
-                          <div key={garment.id} className="rounded-lg border border-border/70 p-3 bg-background/40">
+                          <div key={garment.id} className="rounded-xl border border-border/70 p-3 bg-white/85 hover:shadow-md transition">
                             <div className="flex gap-3">
-                              <div className="size-20 shrink-0 overflow-hidden rounded-md bg-muted/20">
+                              <div className="size-24 shrink-0 overflow-hidden rounded-lg bg-muted/20">
                                 <img
                                   src={garment.image_url}
                                   alt={garment.name}
@@ -620,7 +882,7 @@ export default function Page() {
                                   </p>
                                 ) : null}
                                 {garment.preprocess_error ? (
-                                  <p className="mt-2 text-xs text-red-300 line-clamp-2">
+                                  <p className="mt-2 text-xs text-red-600 line-clamp-2">
                                     {garment.preprocess_error}
                                   </p>
                                 ) : null}
@@ -636,7 +898,7 @@ export default function Page() {
             )}
 
             {activeNav === "history" && (
-              <Card className="bg-card/70 border-border/70">
+              <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                 <CardHeader>
                   <CardTitle className="text-lg">Try-On History</CardTitle>
                   <CardDescription>
@@ -649,16 +911,16 @@ export default function Page() {
                       No try-on history available yet.
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="grid gap-3 lg:grid-cols-2">
                       {tryons.map((item) => (
                         <div
                           key={item.id}
-                          className="rounded-lg border border-border/70 p-3 bg-background/40"
+                          className="rounded-xl border border-border/70 p-3 bg-white/80"
                         >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex items-center gap-3 min-w-0">
                               {item.result_image_url || item.garment_image_url ? (
-                                <div className="size-16 overflow-hidden rounded-md bg-muted/20 shrink-0">
+                                <div className="size-20 overflow-hidden rounded-lg bg-muted/20 shrink-0">
                                   <img
                                     src={item.result_image_url || item.garment_image_url || ""}
                                     alt={`Try-On ${item.id}`}
@@ -691,7 +953,7 @@ export default function Page() {
                           </div>
 
                           {item.error_message ? (
-                            <p className="mt-2 text-xs text-red-300">Error: {item.error_message}</p>
+                            <p className="mt-2 text-xs text-red-600">Error: {item.error_message}</p>
                           ) : null}
                         </div>
                       ))}
@@ -703,7 +965,7 @@ export default function Page() {
 
             {activeNav === "settings" && (
               <section className="grid gap-4 md:grid-cols-2">
-                <Card className="bg-card/70 border-border/70">
+                <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                   <CardHeader>
                     <CardTitle className="text-lg">Account</CardTitle>
                     <CardDescription>Your logged-in identity and profile shortcuts.</CardDescription>
@@ -723,7 +985,7 @@ export default function Page() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-card/70 border-border/70">
+                <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                   <CardHeader>
                     <CardTitle className="text-lg">Try-On Mode</CardTitle>
                     <CardDescription>Choose whether to remain in 2D or shift to 3D.</CardDescription>
@@ -757,7 +1019,7 @@ export default function Page() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-card/70 border-border/70 md:col-span-2">
+                <Card className="bg-white/72 backdrop-blur-lg border-border/70 md:col-span-2">
                   <CardHeader>
                     <CardTitle className="text-lg">Subscription Tier</CardTitle>
                     <CardDescription>Pick a plan profile to match quota and pipeline mode access.</CardDescription>
