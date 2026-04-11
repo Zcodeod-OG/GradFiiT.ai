@@ -18,17 +18,15 @@ router = APIRouter()
 def get_garments(
     skip: int = 0,
     limit: int = 100,
+    saved_only: bool = False,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Get all garments for current user"""
-    garments = (
-        db.query(Garment)
-        .filter(Garment.user_id == current_user.id)
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    query = db.query(Garment).filter(Garment.user_id == current_user.id)
+    if saved_only:
+        query = query.filter(Garment.saved_to_closet.is_(True))
+    garments = query.offset(skip).limit(limit).all()
     return garments
 
 

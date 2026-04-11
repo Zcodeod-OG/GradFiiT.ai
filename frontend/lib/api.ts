@@ -83,8 +83,8 @@ export const uploadApi = {
 
 // Garments API
 export const garmentsApi = {
-  list: (skip = 0, limit = 100) =>
-    api.get(`/api/garments/?skip=${skip}&limit=${limit}`),
+  list: (skip = 0, limit = 100, savedOnly = false) =>
+    api.get(`/api/garments/?skip=${skip}&limit=${limit}&saved_only=${savedOnly}`),
   get: (id: number) => api.get(`/api/garments/${id}`),
   create: (data: {
     name: string;
@@ -92,7 +92,17 @@ export const garmentsApi = {
     category?: string;
     image_url: string;
     s3_key: string;
+    saved_to_closet?: boolean;
   }) => api.post("/api/garments/", data),
+  update: (
+    id: number,
+    data: {
+      name?: string;
+      description?: string;
+      category?: string;
+      saved_to_closet?: boolean;
+    }
+  ) => api.put(`/api/garments/${id}`, data),
 };
 
 // TryOn API

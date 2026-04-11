@@ -16,8 +16,6 @@ import logging
 import time
 from typing import Optional, Dict, Any, List
 
-import replicate as replicate_client
-
 from app.services.replicate import get_replicate_service
 from app.services.garment_processor import get_garment_processor
 from app.services.quality_gate import get_quality_gate_service
@@ -250,9 +248,9 @@ class PipelineService:
 
         # ── Attempt 1: RealVisXL V3 + Multi-ControlNet ────────
         try:
-            output = replicate_client.run(
+            output = self.replicate_service.run_model(
                 REALVISXL_MULTI_CONTROLNET,
-                input={
+                {
                     # img2img: use the Stage-1 OOTDiffusion output as the starting image
                     "image": stage1_image_url,
                     "prompt": prompt,
@@ -314,9 +312,9 @@ class PipelineService:
                 f"Fix any garment seam misalignment or color inaccuracy."
             )
 
-            output = replicate_client.run(
+            output = self.replicate_service.run_model(
                 FLUX_KONTEXT_MODEL,
-                input={
+                {
                     "image": stage1_image_url,
                     "prompt": kontext_prompt,
                     "output_quality": 95,

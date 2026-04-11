@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -21,6 +21,7 @@ class Garment(Base):
     garment_type = Column(String, nullable=True)  # upper_body, lower_body, full_body, dress
     preprocess_status = Column(String, nullable=False, default="pending")
     preprocess_error = Column(Text, nullable=True)
+    saved_to_closet = Column(Boolean, nullable=False, default=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

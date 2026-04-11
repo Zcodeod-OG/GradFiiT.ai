@@ -1,8 +1,9 @@
 import boto3
 from botocore.exceptions import ClientError
-from typing import BinaryIO, Tuple
+from typing import BinaryIO, Tuple, Optional
 import uuid
 from datetime import datetime
+from urllib.parse import urlparse
 
 from app.config import settings
 
@@ -77,6 +78,50 @@ class StorageService:
             return url
         except ClientError as e:
             raise Exception(f"Failed to generate presigned URL: {str(e)}")
+
+    def _extract_bucket_key_from_url(self, url: str) -> Optional[str]:
+        """Extract object key when URL points to this service bucket."""
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return None
+
+        host = parsed.netloc.lower()
+        path_key = parsed.path.lstrip("/")
+        if not path_key:
+            return None
+
+        canonical_hosts = {
+            f"{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com".lower(),
+            f"{self.bucket_name}.s3.amazonaws.com".lower(),
+        }
+        if host in canonical_hosts:
+            return path_key
+
+        # Handles variants like s3-accelerate or regional suffixes.
+        if host.startswith(f"{self.bucket_name}.s3"):
+            return path_key
+
+        return None
+
+    def to_provider_access_url(
+        self,
+        url: Optional[str],
+        s3_key: Optional[str] = None,
+        expiration: int = 3600,
+    ) -> Optional[str]:
+        """Return provider-safe URL, presigning bucket objects when needed."""
+        if not url:
+            return url
+
+        key = s3_key or self._extract_bucket_key_from_url(url)
+        if not key:
+            return url
+
+        try:
+            return self.get_presigned_url(key, expiration=expiration)
+        except Exception:
+            # Keep behavior resilient; callers can still attempt the original URL.
+            return url
 
 
 _storage_service = None

@@ -10,11 +10,14 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Orbit,
   Plus,
   RefreshCw,
   Settings,
   Shirt,
   Sparkles,
+  Target,
+  Trophy,
   Upload,
   UserCircle2,
 } from "lucide-react"
@@ -22,6 +25,7 @@ import { Navbar } from "@/components/Navbar"
 import { HeroSection } from "@/components/ui/hero-section"
 import { FeaturesSection } from "@/components/ui/features-section"
 import { DemoSection } from "@/components/DemoSection"
+import { StyleQuestSection } from "@/components/ui/style-quest-section"
 import { HowItWorksSection } from "@/components/how-it-works-section"
 import { PricingSection } from "@/components/pricing-section"
 import { Footer } from "@/components/ui/footer"
@@ -29,6 +33,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
 import { useAuth } from "@/lib/auth"
 import { garmentsApi, tryonApi, uploadApi, userApi } from "@/lib/api"
 import { TIER_LABELS, TIER_TO_ALLOWED_MODES, type SubscriptionTier, type TryOnMode } from "@/lib/plans"
@@ -43,14 +48,17 @@ type GarmentItem = {
   image_url: string
   preprocess_status: string
   preprocess_error: string | null
+  saved_to_closet: boolean
   created_at: string
 }
 
 type TryOnItem = {
   id: number
+  garment_id: number
   status: string
   result_image_url: string | null
   garment_image_url: string | null
+  tryon_mode: string
   created_at: string
   rating_score: number | null
   quality_gate_passed: boolean | null
@@ -143,6 +151,7 @@ function PublicLanding() {
         <HeroSection />
         <FeaturesSection />
         <DemoSection />
+        <StyleQuestSection />
         <HowItWorksSection />
         <PricingSection />
       </main>
@@ -192,6 +201,7 @@ export default function Page() {
   const [newGarmentDescription, setNewGarmentDescription] = useState("")
   const [newGarmentFile, setNewGarmentFile] = useState<File | null>(null)
   const [isSavingPreferences, setIsSavingPreferences] = useState(false)
+  const [savingGarmentIds, setSavingGarmentIds] = useState<number[]>([])
   const feedSentinelRef = useRef<HTMLDivElement | null>(null)
 
   const navItems: Array<{ key: NavKey; label: string; icon: typeof LayoutDashboard }> = [
@@ -271,24 +281,29 @@ export default function Page() {
     (item) => item.status !== "completed" && item.status !== "failed"
   ).length
   const completionRate = tryons.length > 0 ? Math.round((completedCount / tryons.length) * 100) : 0
+  const closetGarments = garments.filter((garment) => garment.saved_to_closet)
+  const closetGarmentIds = useMemo(
+    () => new Set(closetGarments.map((garment) => garment.id)),
+    [closetGarments]
+  )
 
   const categoryBreakdown = useMemo(() => {
     const counts = new Map<string, number>()
-    garments.forEach((garment) => {
+    closetGarments.forEach((garment) => {
       const key = (garment.category || "Uncategorized").trim() || "Uncategorized"
       counts.set(key, (counts.get(key) ?? 0) + 1)
     })
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 4)
-  }, [garments])
+  }, [closetGarments])
 
   const behaviorPersona = useMemo(() => {
     if (completedCount >= 18) return "Trend Sniper"
     if (inProgressCount >= 4) return "Look Builder"
-    if (garments.length >= 8) return "Closet Curator"
+    if (closetGarments.length >= 8) return "Closet Curator"
     return "Style Explorer"
-  }, [completedCount, inProgressCount, garments.length])
+  }, [completedCount, inProgressCount, closetGarments.length])
 
   const compareSource = useMemo(
     () =>
@@ -297,10 +312,67 @@ export default function Page() {
     [tryons]
   )
 
-  const compareLeftImage = compareSource?.garment_image_url || garments[0]?.image_url || null
+  const compareLeftImage = compareSource?.garment_image_url || closetGarments[0]?.image_url || null
   const compareRightImage = compareSource?.result_image_url || tryons[0]?.result_image_url || null
   const visibleFeedItems = tryons.slice(0, Math.min(feedVisibleCount, tryons.length))
-  const recommendedGarments = garments.slice(0, 6)
+  const recommendedGarments = closetGarments.slice(0, 6)
+  const styleXp = completedCount * 45 + closetGarments.length * 18 + inProgressCount * 10
+  const currentLevel = Math.max(1, Math.floor(styleXp / 250) + 1)
+  const nextLevelXp = currentLevel * 250
+  const previousLevelXp = (currentLevel - 1) * 250
+  const levelProgress =
+    nextLevelXp > previousLevelXp
+      ? Math.round(((styleXp - previousLevelXp) / (nextLevelXp - previousLevelXp)) * 100)
+      : 0
+
+  const styleMissions = [
+    {
+      label: "Complete 2 try-ons",
+      progress: Math.min(completedCount, 2),
+      target: 2,
+      reward: "+80 XP",
+    },
+    {
+      label: "Add 1 new garment",
+      progress: closetGarments.length > 0 ? 1 : 0,
+      target: 1,
+      reward: "Palette unlock",
+    },
+    {
+      label: "Run a high-quality look",
+      progress: tryons.some((item) => typeof item.rating_score === "number") ? 1 : 0,
+      target: 1,
+      reward: "Pro badge",
+    },
+  ]
+
+  const missionCompletion = Math.round(
+    (styleMissions.reduce((acc, mission) => acc + mission.progress / mission.target, 0) /
+      styleMissions.length) *
+      100
+  )
+
+  const handleSaveTryOnGarment = async (item: TryOnItem) => {
+    if (!item.garment_id) {
+      toast.error("This try-on does not have a reusable garment record")
+      return
+    }
+    if (closetGarmentIds.has(item.garment_id)) {
+      toast.info("Already in your closet")
+      return
+    }
+
+    setSavingGarmentIds((prev) => [...prev, item.garment_id])
+    try {
+      await garmentsApi.update(item.garment_id, { saved_to_closet: true })
+      toast.success("Added to closet")
+      await refreshDashboard()
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not add this garment to closet"))
+    } finally {
+      setSavingGarmentIds((prev) => prev.filter((id) => id !== item.garment_id))
+    }
+  }
 
   useEffect(() => {
     setFeedVisibleCount(6)
@@ -346,6 +418,7 @@ export default function Page() {
         category: newGarmentCategory.trim() || "uncategorized",
         image_url: uploaded.data.url,
         s3_key: uploaded.data.s3_key,
+        saved_to_closet: true,
       })
 
       setNewGarmentName("")
@@ -450,6 +523,14 @@ export default function Page() {
                     Start Try-On
                   </Button>
                 </Link>
+                {allowedModes.includes("3d") ? (
+                  <Link href="/avatar-studio">
+                    <Button size="sm" variant="outline" className="w-full justify-start gap-2 bg-white/80">
+                      <Orbit className="size-4" />
+                      Open Avatar Studio
+                    </Button>
+                  </Link>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"
@@ -523,7 +604,7 @@ export default function Page() {
               <Card className="bg-gradient-to-br from-blue-50 to-white border-blue-200/60">
                 <CardContent className="px-5 py-4">
                   <p className="text-xs text-sky-700/80 uppercase tracking-[0.14em]">Items in Closet</p>
-                  <p className="mt-2 text-2xl font-semibold text-sky-950">{garments.length}</p>
+                  <p className="mt-2 text-2xl font-semibold text-sky-950">{closetGarments.length}</p>
                 </CardContent>
               </Card>
               <Card className="bg-gradient-to-br from-violet-50 to-white border-violet-200/60">
@@ -547,7 +628,76 @@ export default function Page() {
             </section>
 
             {activeNav === "overview" && (
-              <section className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+              <div className="space-y-4">
+                <section className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+                  <Card className="bg-white/72 backdrop-blur-lg border-border/70">
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Trophy className="size-5 text-amber-500" />
+                        Style Journey
+                      </CardTitle>
+                      <CardDescription>
+                        Level progression based on your closet activity and try-on results.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-xl border border-border/70 bg-gradient-to-br from-amber-50 to-orange-50 p-3">
+                          <p className="text-xs uppercase tracking-[0.12em] text-amber-700/80">Current Level</p>
+                          <p className="mt-1 text-2xl font-semibold text-amber-900">L{currentLevel}</p>
+                        </div>
+                        <div className="rounded-xl border border-border/70 bg-gradient-to-br from-fuchsia-50 to-pink-50 p-3">
+                          <p className="text-xs uppercase tracking-[0.12em] text-fuchsia-700/80">Style XP</p>
+                          <p className="mt-1 text-2xl font-semibold text-fuchsia-900">{styleXp}</p>
+                        </div>
+                        <div className="rounded-xl border border-border/70 bg-gradient-to-br from-sky-50 to-cyan-50 p-3">
+                          <p className="text-xs uppercase tracking-[0.12em] text-sky-700/80">Quest Completion</p>
+                          <p className="mt-1 text-2xl font-semibold text-sky-900">{missionCompletion}%</p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-border/70 bg-white/80 p-3">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                          <span>Progress to L{currentLevel + 1}</span>
+                          <span>{styleXp}/{nextLevelXp} XP</span>
+                        </div>
+                        <Progress value={Math.max(0, Math.min(100, levelProgress))} />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-white/72 backdrop-blur-lg border-border/70">
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Target className="size-5 text-sky-600" />
+                        Daily Missions
+                      </CardTitle>
+                      <CardDescription>Small actions that unlock personalization perks.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {styleMissions.map((mission) => {
+                        const done = mission.progress >= mission.target
+                        return (
+                          <div key={mission.label} className="rounded-xl border border-border/70 bg-white/80 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-medium">{mission.label}</p>
+                              <Badge className={done ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-sky-100 text-sky-700 border-sky-200"}>
+                                {mission.reward}
+                              </Badge>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                              <span>{mission.progress}/{mission.target}</span>
+                              <span>{done ? "Completed" : "In progress"}</span>
+                            </div>
+                            <Progress className="mt-2" value={Math.round((mission.progress / mission.target) * 100)} />
+                          </div>
+                        )
+                      })}
+                    </CardContent>
+                  </Card>
+                </section>
+
+                <section className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
                 <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                   <CardHeader>
                     <CardTitle className="text-lg">Runway Feed</CardTitle>
@@ -796,6 +946,7 @@ export default function Page() {
                   </Card>
                 </div>
               </section>
+              </div>
             )}
 
             {activeNav === "closet" && (
@@ -839,7 +990,7 @@ export default function Page() {
                       Add To Closet
                     </Button>
                     <p className="text-xs text-muted-foreground">
-                      You can always add more items and use them instantly in the try-on studio.
+                      Items added here are saved directly to closet. Try-on uploads stay in history until you save them.
                     </p>
                   </CardContent>
                 </Card>
@@ -847,16 +998,16 @@ export default function Page() {
                 <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                   <CardHeader>
                     <CardTitle className="text-lg">Closet Library</CardTitle>
-                    <CardDescription>{garments.length} garments available for virtual try-on.</CardDescription>
+                    <CardDescription>{closetGarments.length} garments saved in your closet.</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {garments.length === 0 ? (
+                    {closetGarments.length === 0 ? (
                       <div className="rounded-lg border border-dashed border-border/70 p-6 text-center text-muted-foreground">
-                        No garments yet.
+                        No saved garments yet. Save looks from history or upload directly here.
                       </div>
                     ) : (
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {garments.map((garment) => (
+                        {closetGarments.map((garment) => (
                           <div key={garment.id} className="rounded-xl border border-border/70 p-3 bg-white/85 hover:shadow-md transition">
                             <div className="flex gap-3">
                               <div className="size-24 shrink-0 overflow-hidden rounded-lg bg-muted/20">
@@ -945,6 +1096,22 @@ export default function Page() {
                             <div className="flex items-center gap-2 flex-wrap">
                               {typeof item.rating_score === "number" ? (
                                 <Badge variant="outline">Score: {item.rating_score.toFixed(1)}</Badge>
+                              ) : null}
+                              {item.garment_id && !closetGarmentIds.has(item.garment_id) ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2"
+                                  onClick={() => void handleSaveTryOnGarment(item)}
+                                  disabled={savingGarmentIds.includes(item.garment_id)}
+                                >
+                                  {savingGarmentIds.includes(item.garment_id) ? (
+                                    <Loader2 className="size-3 animate-spin" />
+                                  ) : (
+                                    <Plus className="size-3" />
+                                  )}
+                                  Add to closet
+                                </Button>
                               ) : null}
                               <Badge className={getStatusBadgeClass(item.status)}>
                                 {statusLabelMap[item.status] || item.status}

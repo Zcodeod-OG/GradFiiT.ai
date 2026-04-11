@@ -10,6 +10,7 @@ from app.api.deps import get_current_active_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import AvatarBuildRequest
+from app.services.storage import get_storage
 from app.services.three_d_tryon import get_three_d_tryon_service
 from app.services.subscription import PLAN_RULES, get_plan_rule, get_usage_snapshot, list_plan_catalog
 
@@ -149,9 +150,11 @@ def build_avatar_profile(
     db.commit()
 
     try:
+        storage = get_storage()
+        provider_person_image_url = storage.to_provider_access_url(person_image_url)
         service = get_three_d_tryon_service()
         avatar = service.create_avatar_profile(
-            person_image_url=person_image_url,
+            person_image_url=provider_person_image_url or person_image_url,
             quality=quality,
             body_profile=body_profile,
         )

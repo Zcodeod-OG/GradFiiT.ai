@@ -13,12 +13,12 @@ import io
 import hashlib
 from typing import Optional, List
 
-import replicate as replicate_client
 from PIL import Image
 import numpy as np
 
 from app.config import settings
 from app.services.cache import get_cache_service
+from app.services.replicate import get_replicate_service
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +37,14 @@ GARMENT_CATEGORIES = [
 
 
 class GarmentProcessor:
-    """
-    Service for processing garment images.
+    """Service for processing garment images.
 
     All methods are synchronous (blocking). They should be called
     from a background thread when used in an async web context.
     """
+
+    def __init__(self):
+        self.replicate_service = get_replicate_service()
 
     def process_garment_image(self, image_bytes: bytes) -> bytes:
         """Process garment image locally (resize, optimize).
@@ -90,9 +92,9 @@ class GarmentProcessor:
             return cached
 
         try:
-            output = replicate_client.run(
+            output = self.replicate_service.run_model(
                 REMOVE_BG_MODEL,
-                input={"image": image_url},
+                {"image": image_url},
             )
             result_url = str(output)
             cache.set_json(
@@ -125,9 +127,9 @@ class GarmentProcessor:
             return [float(v) for v in cached]
 
         try:
-            output = replicate_client.run(
+            output = self.replicate_service.run_model(
                 CLIP_FEATURES_MODEL,
-                input={"inputs": image_url},
+                {"inputs": image_url},
             )
             # The model returns a list of dicts with "embedding" key
             if isinstance(output, list) and len(output) > 0:
@@ -177,9 +179,9 @@ class GarmentProcessor:
             best_category = "upper_body"
 
             for text_prompt, category_name in GARMENT_CATEGORIES:
-                text_output = replicate_client.run(
+                text_output = self.replicate_service.run_model(
                     CLIP_FEATURES_MODEL,
-                    input={"inputs": text_prompt},
+                    {"inputs": text_prompt},
                 )
                 if isinstance(text_output, list) and len(text_output) > 0:
                     text_vec = np.array(text_output[0].get("embedding", []))

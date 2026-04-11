@@ -12,12 +12,14 @@ class GarmentBase(BaseModel):
 class GarmentCreate(GarmentBase):
     image_url: str
     s3_key: str
+    saved_to_closet: bool = True
 
 
 class GarmentUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    saved_to_closet: Optional[bool] = None
 
 
 class Garment(GarmentBase):
@@ -30,6 +32,7 @@ class Garment(GarmentBase):
     garment_type: Optional[str] = None
     preprocess_status: str
     preprocess_error: Optional[str] = None
+    saved_to_closet: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
 

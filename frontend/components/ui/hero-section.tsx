@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Sparkles, ArrowRight, ChevronDown, Shirt, Wand2 } from "lucide-react"
+import { Sparkles, ArrowRight, ChevronDown, Shirt, Wand2, Trophy, Flame, Gem } from "lucide-react"
 import { AnimatedCounter } from "@/components/ui/animated-counter"
 import Link from "next/link"
 
@@ -12,6 +12,7 @@ const ROTATING_WORDS = ["Virtually", "Instantly", "Perfectly", "Effortlessly"]
 export function HeroSection() {
   const [wordIndex, setWordIndex] = useState(0)
   const [split, setSplit] = useState(52)
+  const [avatarPulse, setAvatarPulse] = useState(0)
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -27,6 +28,13 @@ export function HeroSection() {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAvatarPulse((prev) => (prev + 1) % 3)
+    }, 1800)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <section className="relative min-h-screen overflow-hidden pt-28 pb-20 md:pt-32 md:pb-24">
       <div className="absolute inset-0 pointer-events-none">
@@ -34,9 +42,9 @@ export function HeroSection() {
           className="absolute inset-0 opacity-60"
           animate={{
             background: [
-              "radial-gradient(circle 680px at 10% 15%, oklch(0.74 0.1 250 / 0.28) 0%, transparent 60%), radial-gradient(circle 520px at 80% 20%, oklch(0.75 0.08 190 / 0.24) 0%, transparent 65%)",
-              "radial-gradient(circle 620px at 18% 28%, oklch(0.74 0.1 250 / 0.24) 0%, transparent 60%), radial-gradient(circle 560px at 84% 26%, oklch(0.75 0.08 190 / 0.3) 0%, transparent 65%)",
-              "radial-gradient(circle 720px at 8% 18%, oklch(0.74 0.1 250 / 0.26) 0%, transparent 60%), radial-gradient(circle 540px at 78% 18%, oklch(0.75 0.08 190 / 0.24) 0%, transparent 65%)",
+              "radial-gradient(circle 680px at 10% 15%, oklch(0.74 0.1 250 / 0.28) 0%, transparent 60%), radial-gradient(circle 520px at 80% 20%, oklch(0.75 0.08 190 / 0.24) 0%, transparent 65%), radial-gradient(circle 540px at 82% 78%, oklch(0.79 0.09 70 / 0.18) 0%, transparent 64%)",
+              "radial-gradient(circle 620px at 18% 28%, oklch(0.74 0.1 250 / 0.24) 0%, transparent 60%), radial-gradient(circle 560px at 84% 26%, oklch(0.75 0.08 190 / 0.3) 0%, transparent 65%), radial-gradient(circle 520px at 80% 74%, oklch(0.79 0.09 70 / 0.2) 0%, transparent 64%)",
+              "radial-gradient(circle 720px at 8% 18%, oklch(0.74 0.1 250 / 0.26) 0%, transparent 60%), radial-gradient(circle 540px at 78% 18%, oklch(0.75 0.08 190 / 0.24) 0%, transparent 65%), radial-gradient(circle 560px at 85% 76%, oklch(0.79 0.09 70 / 0.16) 0%, transparent 64%)",
             ],
           }}
           transition={{ duration: 14, repeat: Infinity, ease: "linear" }}
@@ -120,6 +128,26 @@ export function HeroSection() {
               <p className="text-sm text-muted-foreground">Typical runtime</p>
             </div>
           </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.75, delay: 0.85 }}
+            className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-2xl"
+          >
+            <div className="rounded-xl border border-border/70 bg-white/75 px-3 py-2 text-sm flex items-center gap-2">
+              <Trophy className="size-4 text-amber-500" />
+              Style XP +120
+            </div>
+            <div className="rounded-xl border border-border/70 bg-white/75 px-3 py-2 text-sm flex items-center gap-2">
+              <Flame className="size-4 text-rose-500" />
+              7-Day Streak
+            </div>
+            <div className="rounded-xl border border-border/70 bg-white/75 px-3 py-2 text-sm flex items-center gap-2 col-span-2 md:col-span-1">
+              <Gem className="size-4 text-cyan-600" />
+              Avatar Lab Unlocked
+            </div>
+          </motion.div>
         </div>
 
         <motion.div
@@ -166,6 +194,20 @@ export function HeroSection() {
               </div>
               <div className="absolute right-4 top-4 rounded-full bg-black/80 px-3 py-1 text-xs font-semibold text-white">
                 After
+              </div>
+
+              <div className="absolute left-4 bottom-4 right-4 rounded-xl border border-white/70 bg-white/75 backdrop-blur-sm px-3 py-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Avatar Fit Score</span>
+                  <span className="font-semibold text-foreground">{avatarPulse === 0 ? "84" : avatarPulse === 1 ? "88" : "91"}%</span>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-white/80 overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full bg-gradient-to-r from-primary via-sky-500 to-emerald-400"
+                    animate={{ width: avatarPulse === 0 ? "84%" : avatarPulse === 1 ? "88%" : "91%" }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
+                  />
+                </div>
               </div>
             </div>
           </div>

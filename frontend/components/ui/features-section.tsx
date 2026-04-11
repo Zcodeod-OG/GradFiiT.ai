@@ -11,36 +11,42 @@ const features = [
     title: "Instant Results",
     description:
       "Lightning fast AI generation delivers your virtual try-on in seconds, not minutes.",
+    reward: "+30 XP",
   },
   {
     icon: Shirt,
     title: "Any Clothing",
     description:
       "Works with items from any brand. Upload any clothing image and see it on you.",
+    reward: "+20 XP",
   },
   {
     icon: Sparkles,
     title: "Photorealistic",
     description:
       "Two-layer AI pipeline with OOTDiffusion and SDXL refinement for stunning realism.",
+    reward: "Pro Boost",
   },
   {
     icon: Chrome,
     title: "Browser Extension",
     description:
       "Try on clothes directly from any online store with our Chrome extension.",
+    reward: "Quick Quest",
   },
   {
     icon: Shield,
     title: "Privacy First",
     description:
       "Your photos are processed securely and never stored without your permission.",
+    reward: "Trust Badge",
   },
   {
     icon: Users,
     title: "All Body Types",
     description:
       "Designed to work beautifully across all body types, sizes, and proportions.",
+    reward: "Inclusivity+",
   },
 ]
 
@@ -78,9 +84,13 @@ export function FeaturesSection() {
               transition={{ duration: 0.5, delay: index * 0.1 }}
             >
               <TiltCard intensity={12} className="h-full">
-                <div className="surface-panel rounded-2xl p-8 h-full relative group overflow-hidden transition-all duration-300 group-hover:-translate-y-1 group-hover:neo-shadow">
+                <div className="surface-panel rounded-2xl p-8 h-full relative group overflow-hidden transition-all duration-300 group-hover:-translate-y-1 group-hover:neo-shadow bg-[linear-gradient(160deg,rgba(255,255,255,0.88),rgba(240,247,255,0.82))]">
                   <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                  </div>
+
+                  <div className="absolute top-3 right-3 rounded-full border border-border/70 bg-white/85 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    {feature.reward}
                   </div>
 
                   <motion.div

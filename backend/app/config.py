@@ -383,6 +383,41 @@ class Settings(BaseSettings):
 
     # ==================== Tripo AI (3D Pipeline) ====================
 
+    THREE_D_ENGINE: str = Field(
+        default="smpl_pifuhd",
+        description="Primary 3D engine. Supported: smpl_pifuhd, tripo"
+    )
+
+    THREE_D_ALLOW_TRIPO_FALLBACK: bool = Field(
+        default=True,
+        description="Allow Tripo fallback when SMPL+PIFuHD service is unavailable"
+    )
+
+    SMPL_PIFUHD_API_BASE_URL: Optional[str] = Field(
+        default=None,
+        description="Base URL for SMPL + PIFuHD 3D service"
+    )
+
+    SMPL_PIFUHD_CREATE_AVATAR_ENDPOINT: str = Field(
+        default="/v1/avatar/create",
+        description="SMPL+PIFuHD endpoint for avatar creation"
+    )
+
+    SMPL_PIFUHD_FIT_GARMENT_ENDPOINT: str = Field(
+        default="/v1/avatar/fit-garment",
+        description="SMPL+PIFuHD endpoint for 3D garment fitting"
+    )
+
+    SMPL_PIFUHD_HTTP_TIMEOUT_SECONDS: int = Field(
+        default=120,
+        description="HTTP timeout for SMPL+PIFuHD requests"
+    )
+
+    SMPL_PIFUHD_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Optional API key for SMPL+PIFuHD service"
+    )
+
     TRIPO_API_KEY: Optional[str] = Field(
         default=None,
         description="Tripo API key for 3D mannequin generation"
@@ -454,6 +489,16 @@ class Settings(BaseSettings):
         if v.upper() not in allowed:
             raise ValueError(f"Log level must be one of {allowed}")
         return v.upper()
+
+    @field_validator("THREE_D_ENGINE")
+    @classmethod
+    def validate_three_d_engine(cls, v: str) -> str:
+        """Validate 3D engine selection."""
+        normalized = (v or "smpl_pifuhd").strip().lower()
+        allowed = ["smpl_pifuhd", "tripo"]
+        if normalized not in allowed:
+            raise ValueError(f"THREE_D_ENGINE must be one of {allowed}")
+        return normalized
     
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

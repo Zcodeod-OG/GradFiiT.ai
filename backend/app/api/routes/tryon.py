@@ -33,6 +33,7 @@ from app.api.deps import get_current_active_user, get_optional_active_user
 from app.services.tasks import process_tryon_task
 from app.services.tryon_runner import run_tryon_pipeline
 from app.services.pipeline import get_pipeline_service
+from app.services.storage import get_storage
 from app.services.subscription import enforce_tryon_quota, get_usage_snapshot
 from app.services.yolo_pose import get_yolo_pose_service
 
@@ -201,6 +202,7 @@ def generate_tryon(
     """Start a virtual try-on generation."""
     requested_mode = (data.mode or current_user.preferred_tryon_mode or "2d").lower().strip()
     quota_snapshot = enforce_tryon_quota(db=db, user=current_user, requested_mode=requested_mode)
+    storage = get_storage()
 
     person_image_url = (data.person_image_url or "").strip()
     if requested_mode == "3d":
@@ -220,6 +222,12 @@ def generate_tryon(
                 detail="2D try-on requires a valid person_image_url",
             )
 
+    person_image_url_for_provider = (
+        storage.to_provider_access_url(person_image_url)
+        if _is_http_url(person_image_url)
+        else person_image_url
+    )
+
     # Validate garment exists and belongs to user
     garment = (
         db.query(Garment)
@@ -231,6 +239,14 @@ def generate_tryon(
 
     garment_image_url = garment.image_url
     preprocessed_garment_url = garment.extracted_image_url
+    garment_image_url_for_provider = storage.to_provider_access_url(
+        garment_image_url,
+        garment.s3_key,
+    )
+    preprocessed_garment_url_for_provider = storage.to_provider_access_url(
+        preprocessed_garment_url,
+        garment.extracted_s3_key,
+    )
     garment_description = (
         garment.description
         or garment.category
@@ -323,12 +339,12 @@ def generate_tryon(
                 async_result = process_tryon_task.apply_async(
                     args=(
                         tryon.id,
-                        person_image_url,
-                        garment_image_url,
+                        person_image_url_for_provider,
+                        garment_image_url_for_provider,
                         garment_description,
                         effective_quality,
                         garment_category,
-                        preprocessed_garment_url,
+                        preprocessed_garment_url_for_provider,
                         requested_mode,
                     ),
                     ignore_result=True,
@@ -372,12 +388,12 @@ def generate_tryon(
             target=_run_pipeline_in_background,
             args=(
                 tryon.id,
-                person_image_url,
-                garment_image_url,
+                person_image_url_for_provider,
+                garment_image_url_for_provider,
                 garment_description,
                 effective_quality,
                 garment_category,
-                preprocessed_garment_url,
+                preprocessed_garment_url_for_provider,
                 requested_mode,
             ),
             daemon=True,
@@ -418,6 +434,9 @@ def generate_quick_preview(
         current_user=current_user,
         db=db,
     )
+    storage = get_storage()
+    provider_person_image_url = storage.to_provider_access_url(person_image_url)
+    provider_garment_image_url = storage.to_provider_access_url(data.garment_image_url)
     quality = (data.quality or "fast").lower().strip()
     if quality not in {"fast", "balanced", "best"}:
         quality = "fast"
@@ -451,8 +470,8 @@ def generate_quick_preview(
         pipeline = get_pipeline_service()
         preview_category_hint = (data.garment_description or "").strip().lower()
         stage1 = pipeline.run_stage1_oot_diffusion(
-            person_image_url=person_image_url,
-            garment_image_url=data.garment_image_url,
+            person_image_url=provider_person_image_url,
+            garment_image_url=provider_garment_image_url,
             garment_description=data.garment_description or "a garment",
             garment_category=preview_category_hint,
         )

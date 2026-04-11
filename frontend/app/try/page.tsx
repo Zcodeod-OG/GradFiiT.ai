@@ -18,11 +18,17 @@ import {
   FileImage,
   LogIn,
   Box,
+  Trophy,
+  Flame,
+  Target,
+  Star,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { uploadApi, garmentsApi, tryonApi, userApi } from "@/lib/api"
 import { getApiErrorMessage } from "@/lib/api-error"
@@ -188,6 +194,33 @@ export default function TryOnPage() {
   const allowedModes = TIER_TO_ALLOWED_MODES[currentTier] || ["2d"]
   const registerAllowedModes = TIER_TO_ALLOWED_MODES[registerTier] || ["2d"]
   const registerHas3d = registerAllowedModes.includes("3d")
+  const sessionXp =
+    (personImage ? 20 : 0) +
+    (garmentImage ? 20 : 0) +
+    (tryonMode === "3d" ? 35 : 20) +
+    (quality === "best" ? 30 : quality === "balanced" ? 20 : 10)
+  const sessionLevel = Math.max(1, Math.floor(sessionXp / 40) + 1)
+  const nextSessionLevelXp = sessionLevel * 40
+  const sessionLevelProgress = Math.round(((sessionXp - (sessionLevel - 1) * 40) / 40) * 100)
+
+  const missionSteps = [
+    {
+      label: "Upload person image",
+      done: !!personImage,
+    },
+    {
+      label: "Upload garment image",
+      done: !!garmentImage,
+    },
+    {
+      label: "Generate your look",
+      done: !!resultImage,
+    },
+  ]
+
+  const missionProgress = Math.round(
+    (missionSteps.filter((step) => step.done).length / missionSteps.length) * 100
+  )
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -527,6 +560,7 @@ export default function TryOnPage() {
         name: garmentImage.file.name || "Garment",
         image_url: garmentUpload.data.url,
         s3_key: garmentUpload.data.s3_key,
+        saved_to_closet: false,
       })
 
       // Step 3: Start try-on generation
@@ -690,6 +724,61 @@ export default function TryOnPage() {
             Usage: {quotaSnapshot.used}/{quotaSnapshot.limit} this {quotaSnapshot.period}. Remaining {quotaSnapshot.remaining}.
           </div>
         ) : null}
+
+        <div className="grid gap-4 md:grid-cols-3 mb-6">
+          <Card className="bg-gradient-to-br from-fuchsia-50 to-pink-50 border-fuchsia-200/70">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.13em] text-fuchsia-700/80">Session XP</p>
+                <Trophy className="size-4 text-amber-500" />
+              </div>
+              <p className="mt-1 text-2xl font-semibold text-fuchsia-900">{sessionXp}</p>
+              <p className="text-xs text-muted-foreground mt-1">Level {sessionLevel} · next at {nextSessionLevelXp}</p>
+              <Progress className="mt-2" value={Math.max(0, Math.min(100, sessionLevelProgress))} />
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-sky-50 to-cyan-50 border-sky-200/70">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.13em] text-sky-700/80">Mission Board</p>
+                <Target className="size-4 text-sky-600" />
+              </div>
+              <div className="mt-2 space-y-2">
+                {missionSteps.map((step) => (
+                  <div key={step.label} className="flex items-center justify-between text-sm">
+                    <span>{step.label}</span>
+                    <Badge className={step.done ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-white/80 text-muted-foreground border-border/70"}>
+                      {step.done ? "Done" : "Pending"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">Progress {missionProgress}%</div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200/70">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-[0.13em] text-amber-700/80">Avatar Track</p>
+                <Flame className="size-4 text-rose-500" />
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {tryonMode === "3d"
+                  ? "3D mode selected. You are in avatar pipeline mode."
+                  : "2D mode selected. Switch to 3D for avatar-based fitting."}
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <Badge className="bg-white/80 text-foreground border-border/70">{TIER_LABELS[currentTier]}</Badge>
+                <Badge className="bg-white/80 text-foreground border-border/70">
+                  <Star className="size-3 mr-1" />
+                  {tryonMode.toUpperCase()} Active
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Error Message */}
         <AnimatePresence>
@@ -1147,6 +1236,9 @@ export default function TryOnPage() {
                       <span className="text-xs text-muted-foreground mt-1">
                         {option.description}
                       </span>
+                      <span className="mt-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                        {option.value === "fast" ? "+10 XP" : option.value === "balanced" ? "+20 XP" : "+30 XP"}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -1155,7 +1247,13 @@ export default function TryOnPage() {
               {/* Generate Button */}
               <Button
                 onClick={handleGenerate}
-                disabled={!personImage || !garmentImage || isProcessing}
+                disabled={
+                  !garmentImage ||
+                  isProcessing ||
+                  (tryonMode === "2d"
+                    ? !personImage
+                    : !(personImage || user?.avatar_status === "ready"))
+                }
                 className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
               >
                 {isProcessing ? (
@@ -1164,13 +1262,13 @@ export default function TryOnPage() {
                     Generating...
                   </>
                 ) : (
-                  tryonMode === "3d" ? "Generate 3D Try-On" : "Generate 2D Try-On"
+                  tryonMode === "3d" ? "Generate 3D Try-On + Earn XP" : "Generate 2D Try-On + Earn XP"
                 )}
               </Button>
 
               <p className="text-xs text-muted-foreground">
                 {tryonMode === "3d"
-                  ? "3D mode uses Tripo AI mannequin generation with garment fitting and 360 output."
+                  ? "3D mode uses SMPL + PIFuHD avatar fitting with 360 model output."
                   : "2D mode uses OOTDiffusion pipeline for fast photorealistic try-ons."}
               </p>
 
