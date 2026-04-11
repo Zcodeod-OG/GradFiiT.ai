@@ -1,6 +1,5 @@
----------------------------------START------------------------------------------------------------------
 $ErrorActionPreference = "Stop"
-$Repo = "E:\ALTER.ai"
+$Repo = "E:\GradFiiT.ai"
 Set-Location $Repo
 
 if (!(Test-Path "..venv\Scripts\python.exe")) {
