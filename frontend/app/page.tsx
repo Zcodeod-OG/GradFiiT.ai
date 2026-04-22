@@ -28,12 +28,21 @@ import { DemoSection } from "@/components/DemoSection"
 import { StyleQuestSection } from "@/components/ui/style-quest-section"
 import { HowItWorksSection } from "@/components/how-it-works-section"
 import { PricingSection } from "@/components/pricing-section"
+import { ScrollStory } from "@/components/landing/ScrollStory"
+import { CompareScrubSection } from "@/components/landing/CompareScrubSection"
+import { ExtensionShowcase } from "@/components/landing/ExtensionShowcase"
+import { StatsTickerSection } from "@/components/landing/StatsTickerSection"
 import { Footer } from "@/components/ui/footer"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
+import { PhotoWizard } from "@/components/onboarding/PhotoWizard"
+import { PipelineMeter } from "@/components/PipelineMeter"
+import { useTryOnLiveStatus } from "@/components/hooks/useTryOnLiveStatus"
+import { CommandPalette, useCommandPaletteToggle } from "@/components/CommandPalette"
+import { useDropzone } from "react-dropzone"
 import { useAuth } from "@/lib/auth"
 import { garmentsApi, tryonApi, uploadApi, userApi } from "@/lib/api"
 import { TIER_LABELS, TIER_TO_ALLOWED_MODES, type SubscriptionTier, type TryOnMode } from "@/lib/plans"
@@ -149,9 +158,13 @@ function PublicLanding() {
       <Navbar />
       <main>
         <HeroSection />
+        <ScrollStory />
+        <CompareScrubSection />
         <FeaturesSection />
         <DemoSection />
+        <ExtensionShowcase />
         <StyleQuestSection />
+        <StatsTickerSection />
         <HowItWorksSection />
         <PricingSection />
       </main>
@@ -202,6 +215,26 @@ export default function Page() {
   const [newGarmentFile, setNewGarmentFile] = useState<File | null>(null)
   const [isSavingPreferences, setIsSavingPreferences] = useState(false)
   const [savingGarmentIds, setSavingGarmentIds] = useState<number[]>([])
+  const [photoWizardOpen, setPhotoWizardOpen] = useState(false)
+  const [photoWizardForceOnboarding, setPhotoWizardForceOnboarding] = useState(false)
+  const [photoWizardSeen, setPhotoWizardSeen] = useState(false)
+  const [activeTryOnId, setActiveTryOnId] = useState<number | null>(null)
+  const [quickTryError, setQuickTryError] = useState<string | null>(null)
+  const [quickTryStartingGarmentId, setQuickTryStartingGarmentId] = useState<number | null>(null)
+  const [stickyDrawerCollapsed, setStickyDrawerCollapsed] = useState(false)
+  const [commandOpen, setCommandOpen] = useCommandPaletteToggle()
+  const garmentDropzone = useDropzone({
+    accept: {
+      "image/png": [".png"],
+      "image/jpeg": [".jpg", ".jpeg"],
+      "image/webp": [".webp"],
+    },
+    multiple: false,
+    onDrop: (accepted) => {
+      const file = accepted[0]
+      if (file) setNewGarmentFile(file)
+    },
+  })
   const feedSentinelRef = useRef<HTMLDivElement | null>(null)
 
   const navItems: Array<{ key: NavKey; label: string; icon: typeof LayoutDashboard }> = [
@@ -258,6 +291,19 @@ export default function Page() {
     }
   }, [isAuthenticated, refreshDashboard])
 
+  // First-login Photo Wizard. We open the wizard exactly once per
+  // session when the authenticated user has no saved default photo, so
+  // every other surface (/try, Quick Try, the extension overlay) can
+  // assume the photo exists.
+  useEffect(() => {
+    if (!isAuthenticated || !user) return
+    if (user.default_person_image_url) return
+    if (photoWizardSeen) return
+    setPhotoWizardForceOnboarding(true)
+    setPhotoWizardOpen(true)
+    setPhotoWizardSeen(true)
+  }, [isAuthenticated, user, photoWizardSeen])
+
   useEffect(() => {
     if (!isAuthenticated) return
 
@@ -305,6 +351,78 @@ export default function Page() {
     return "Style Explorer"
   }, [completedCount, inProgressCount, closetGarments.length])
 
+  const currentTier = (user?.subscription_tier || "free_2d") as SubscriptionTier
+  const preferredMode = (user?.preferred_tryon_mode || "2d") as TryOnMode
+  const allowedModes = TIER_TO_ALLOWED_MODES[currentTier] || ["2d"]
+
+  const { status: activeTryOnStatus } = useTryOnLiveStatus(activeTryOnId)
+
+  // Resumable processing: when the user returns to the dashboard with
+  // an in-flight try-on, surface it in the sticky drawer automatically.
+  useEffect(() => {
+    if (activeTryOnId) return
+    const inFlight = tryons.find(
+      (item) =>
+        item.status !== "completed" &&
+        item.status !== "failed" &&
+        item.status !== "dead_letter"
+    )
+    if (inFlight) {
+      setActiveTryOnId(inFlight.id)
+      setStickyDrawerCollapsed(false)
+    }
+  }, [tryons, activeTryOnId])
+
+  // When the live status reports completion, refresh the dashboard so
+  // the new result appears in the runway feed and the meter clears.
+  useEffect(() => {
+    if (!activeTryOnStatus) return
+    if (
+      activeTryOnStatus.status === "completed" ||
+      activeTryOnStatus.status === "failed" ||
+      activeTryOnStatus.status === "dead_letter"
+    ) {
+      void refreshDashboard()
+    }
+  }, [activeTryOnStatus, refreshDashboard])
+
+  const handleQuickTry = useCallback(
+    async (garmentId: number) => {
+      if (!user?.default_person_image_url) {
+        setPhotoWizardForceOnboarding(false)
+        setPhotoWizardOpen(true)
+        toast.info("Add your photo first to use Quick Try")
+        return
+      }
+      setQuickTryStartingGarmentId(garmentId)
+      setQuickTryError(null)
+      try {
+        const response = await tryonApi.generate(
+          garmentId,
+          undefined, // backend will use the saved default photo
+          "balanced",
+          (preferredMode || "2d") as TryOnMode
+        )
+        const tryonId = response.data?.data?.tryon_id
+        if (tryonId) {
+          setActiveTryOnId(Number(tryonId))
+          setStickyDrawerCollapsed(false)
+          toast.success("Try-on started -- watch the progress bar.")
+        }
+      } catch (error) {
+        const detail =
+          (error as { response?: { data?: { detail?: string } } }).response?.data?.detail ||
+          (error as Error).message ||
+          "Could not start try-on"
+        setQuickTryError(detail)
+        toast.error(detail)
+      } finally {
+        setQuickTryStartingGarmentId(null)
+      }
+    },
+    [user, preferredMode, refreshDashboard]
+  )
+
   const compareSource = useMemo(
     () =>
       tryons.find((item) => item.result_image_url && item.garment_image_url) ||
@@ -314,7 +432,17 @@ export default function Page() {
 
   const compareLeftImage = compareSource?.garment_image_url || closetGarments[0]?.image_url || null
   const compareRightImage = compareSource?.result_image_url || tryons[0]?.result_image_url || null
-  const visibleFeedItems = tryons.slice(0, Math.min(feedVisibleCount, tryons.length))
+  // Runway Feed rules:
+  //  - Terminal failures (failed / dead_letter) never appear -- the user
+  //    asked for a curated "looks" stream, not a debugging log.
+  //  - We also drop items with no image at all to keep the reel from
+  //    stuttering into empty cards while a run is still seeding.
+  const feedItems = tryons.filter((item) => {
+    if (item.status === "failed" || item.status === "dead_letter") return false
+    const hasImage = Boolean(item.result_image_url || item.garment_image_url)
+    return hasImage
+  })
+  const visibleFeedItems = feedItems.slice(0, Math.min(feedVisibleCount, feedItems.length))
   const recommendedGarments = closetGarments.slice(0, 6)
   const styleXp = completedCount * 45 + closetGarments.length * 18 + inProgressCount * 10
   const currentLevel = Math.max(1, Math.floor(styleXp / 250) + 1)
@@ -363,11 +491,28 @@ export default function Page() {
     }
 
     setSavingGarmentIds((prev) => [...prev, item.garment_id])
+
+    // Optimistic update: flip the local garment state immediately so the
+    // closet count and "Save to closet" affordance reflect the action
+    // before the network round-trip completes.
+    const previousGarments = garments
+    setGarments((prev) =>
+      prev.map((garment) =>
+        garment.id === item.garment_id
+          ? { ...garment, saved_to_closet: true }
+          : garment
+      )
+    )
+
     try {
       await garmentsApi.update(item.garment_id, { saved_to_closet: true })
       toast.success("Added to closet")
-      await refreshDashboard()
+      // Background refresh keeps the rest of the dashboard in sync, but the
+      // user already sees the change.
+      void refreshDashboard()
     } catch (error) {
+      // Roll back the optimistic mutation on failure.
+      setGarments(previousGarments)
       toast.error(getErrorMessage(error, "Could not add this garment to closet"))
     } finally {
       setSavingGarmentIds((prev) => prev.filter((id) => id !== item.garment_id))
@@ -387,7 +532,7 @@ export default function Page() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return
-        setFeedVisibleCount((current) => Math.min(current + 4, tryons.length))
+        setFeedVisibleCount((current) => Math.min(current + 4, feedItems.length))
       },
       { rootMargin: "220px 0px" }
     )
@@ -397,7 +542,7 @@ export default function Page() {
     return () => {
       observer.disconnect()
     }
-  }, [activeNav, tryons.length])
+  }, [activeNav, feedItems.length])
 
   const handleUploadGarment = async () => {
     if (!newGarmentName.trim()) {
@@ -438,10 +583,6 @@ export default function Page() {
       setIsUploading(false)
     }
   }
-
-  const currentTier = (user?.subscription_tier || "free_2d") as SubscriptionTier
-  const preferredMode = (user?.preferred_tryon_mode || "2d") as TryOnMode
-  const allowedModes = TIER_TO_ALLOWED_MODES[currentTier] || ["2d"]
 
   const handleSavePreferences = async (payload: {
     preferred_tryon_mode?: TryOnMode
@@ -487,7 +628,7 @@ export default function Page() {
                 <Sparkles className="size-4" />
               </div>
               <div>
-                <p className="font-semibold leading-none">ALTER.ai Home</p>
+                <p className="font-semibold leading-none">GradFiT Home</p>
                 <p className="text-[11px] text-muted-foreground mt-1">{behaviorPersona}</p>
               </div>
             </div>
@@ -629,6 +770,96 @@ export default function Page() {
 
             {activeNav === "overview" && (
               <div className="space-y-4">
+                <Card className="bg-white/72 backdrop-blur-lg border-border/70">
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Sparkles className="size-5 text-fuchsia-500" />
+                          Quick Try
+                        </CardTitle>
+                        <CardDescription>
+                          {user?.default_person_image_url
+                            ? "Tap any garment to instantly run a try-on with your saved photo."
+                            : "Add your photo once and Quick Try lets you launch a look in a single tap."}
+                        </CardDescription>
+                      </div>
+                      {user?.default_person_image_url ? (
+                        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">
+                          <span className="relative size-6 overflow-hidden rounded-full ring-1 ring-emerald-200">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={user.default_person_smart_crop_url || user.default_person_image_url}
+                              alt="You"
+                              className="size-full object-cover"
+                            />
+                          </span>
+                          Saved photo ready
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setPhotoWizardForceOnboarding(true)
+                            setPhotoWizardOpen(true)
+                          }}
+                        >
+                          Add my photo
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {closetGarments.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border/70 p-6 text-center text-muted-foreground">
+                        Your closet is empty. Save a few looks first to enable Quick Try.
+                        <div className="mt-4">
+                          <Link href={`/try?mode=${preferredMode}`}>
+                            <Button className="bg-gradient-to-r from-primary to-sky-500 text-white">
+                              Open the studio <ArrowRight className="size-4" />
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+                        {closetGarments.slice(0, 6).map((garment) => {
+                          const launching = quickTryStartingGarmentId === garment.id
+                          return (
+                            <button
+                              key={garment.id}
+                              type="button"
+                              onClick={() => void handleQuickTry(garment.id)}
+                              disabled={launching || activeTryOnStatus?.status === "stage1_processing"}
+                              className="group relative aspect-square overflow-hidden rounded-xl border border-border/70 bg-muted/40 transition hover:border-primary/40 hover:shadow-md disabled:opacity-60"
+                            >
+                              {garment.image_url ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                <img
+                                  src={garment.image_url}
+                                  alt={garment.name || "Garment"}
+                                  className="size-full object-cover transition group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
+                                  No image
+                                </div>
+                              )}
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-1.5 text-left text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100">
+                                {launching ? "Launching..." : "Quick try"}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {quickTryError ? (
+                      <p className="mt-3 text-xs text-destructive">{quickTryError}</p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
                 <section className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
                   <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                     <CardHeader>
@@ -698,16 +929,23 @@ export default function Page() {
                 </section>
 
                 <section className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-                <Card className="bg-white/72 backdrop-blur-lg border-border/70">
-                  <CardHeader>
-                    <CardTitle className="text-lg">Runway Feed</CardTitle>
-                    <CardDescription>
-                      Infinite visual stream based on your latest try-ons.
-                    </CardDescription>
+                <Card className="bg-white/72 backdrop-blur-lg border-border/70 overflow-hidden">
+                  <CardHeader className="flex flex-row items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-lg">Runway Feed</CardTitle>
+                      <CardDescription>
+                        Swipe through your looks. Drag or scroll to reel through each try-on.
+                      </CardDescription>
+                    </div>
+                    {feedItems.length > 0 ? (
+                      <Badge className="bg-foreground/5 text-foreground/70 border-transparent">
+                        {feedItems.length} {feedItems.length === 1 ? "look" : "looks"}
+                      </Badge>
+                    ) : null}
                   </CardHeader>
-                  <CardContent>
-                    {tryons.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-border/70 p-6 text-center text-muted-foreground">
+                  <CardContent className="p-0">
+                    {feedItems.length === 0 ? (
+                      <div className="m-6 rounded-lg border border-dashed border-border/70 p-6 text-center text-muted-foreground">
                         No looks in your feed yet. Launch your first try-on to start building your runway.
                         <div className="mt-4">
                           <Link href={`/try?mode=${preferredMode}`}>
@@ -718,61 +956,125 @@ export default function Page() {
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {visibleFeedItems.map((item, index) => (
-                          <motion.article
-                            key={item.id}
-                            initial={{ opacity: 0, y: 12 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.28, delay: index * 0.03 }}
-                            className="rounded-2xl border border-border/70 bg-white/80 p-3"
-                          >
-                            <div className="grid gap-3 sm:grid-cols-[140px_1fr_auto] sm:items-center">
-                              <div className="aspect-[4/5] sm:aspect-square overflow-hidden rounded-lg bg-muted/25">
-                                {item.result_image_url || item.garment_image_url ? (
-                                  <img
-                                    src={item.result_image_url || item.garment_image_url || ""}
-                                    alt={`Try-on preview ${item.id}`}
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="h-full w-full flex items-center justify-center">
-                                    <Shirt className="size-6 text-muted-foreground" />
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="min-w-0">
-                                <p className="text-xs uppercase tracking-[0.16em] text-sky-700/80">Look #{item.id}</p>
-                                <div className="mt-1 flex items-center gap-2">
-                                  <Badge className={getStatusBadgeClass(item.status)}>
-                                    {statusLabelMap[item.status] || item.status}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">{formatTimeAgo(item.created_at)}</span>
+                      // TikTok-style reel: tall vertical viewport, snap-scroll
+                      // between items so each try-on fills the frame. We give
+                      // the scroller a fixed height and let each article be
+                      // full-height + snap-start, which is what locks each look
+                      // into place as the user scrolls.
+                      <div
+                        className="runway-reel relative h-[640px] overflow-y-auto snap-y snap-mandatory"
+                        style={{
+                          scrollbarWidth: "none",
+                          WebkitOverflowScrolling: "touch",
+                        }}
+                      >
+                        {visibleFeedItems.map((item, index) => {
+                          const heroImage = item.result_image_url || item.garment_image_url
+                          const isComplete = item.status === "completed"
+                          const isProcessing =
+                            item.status !== "completed" &&
+                            item.status !== "failed" &&
+                            item.status !== "dead_letter"
+                          return (
+                            <motion.article
+                              key={item.id}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              transition={{ duration: 0.24, delay: Math.min(index, 3) * 0.04 }}
+                              className="relative h-full w-full snap-start snap-always"
+                            >
+                              {/* Hero image fills the reel. Contain (not cover)
+                                  so fashion shots aren't cropped to the face. */}
+                              {heroImage ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                <img
+                                  src={heroImage}
+                                  alt={`Look #${item.id}`}
+                                  className="absolute inset-0 h-full w-full object-contain bg-gradient-to-br from-slate-100 via-white to-sky-50"
+                                />
+                              ) : (
+                                <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
+                                  <Shirt className="size-10 text-muted-foreground" />
                                 </div>
-                                {typeof item.rating_score === "number" ? (
-                                  <p className="mt-2 text-xs text-muted-foreground">
-                                    Match score {item.rating_score.toFixed(1)}
-                                  </p>
-                                ) : null}
+                              )}
+
+                              {/* Top fade + meta row */}
+                              <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/55 via-black/10 to-transparent" />
+                              <div className="absolute left-4 right-4 top-4 flex items-center justify-between text-white">
+                                <div className="flex items-center gap-2">
+                                  <span className="rounded-full bg-white/15 backdrop-blur px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                                    Look #{item.id}
+                                  </span>
+                                  {isProcessing ? (
+                                    <span className="rounded-full bg-sky-500/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] backdrop-blur flex items-center gap-1.5">
+                                      <span className="relative flex size-1.5">
+                                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/70" />
+                                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+                                      </span>
+                                      {statusLabelMap[item.status] || item.status}
+                                    </span>
+                                  ) : null}
+                                  {isComplete && typeof item.rating_score === "number" ? (
+                                    <span className="rounded-full bg-emerald-500/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] backdrop-blur flex items-center gap-1">
+                                      <Sparkles className="size-3" />
+                                      {item.rating_score.toFixed(1)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <span className="rounded-full bg-black/30 backdrop-blur px-2.5 py-1 text-[10px] font-medium">
+                                  {formatTimeAgo(item.created_at)}
+                                </span>
                               </div>
 
-                              <Link href={`/try?mode=${preferredMode}`}>
-                                <Button variant="outline" size="sm" className="bg-white/80 w-full sm:w-auto">
-                                  Remix
-                                </Button>
-                              </Link>
-                            </div>
-                          </motion.article>
-                        ))}
+                              {/* Bottom fade + action row (TikTok-style). */}
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/70 via-black/25 to-transparent" />
+                              <div className="absolute inset-x-0 bottom-0 p-5 flex items-end justify-between gap-3 text-white">
+                                <div className="min-w-0 max-w-[60%]">
+                                  <p className="text-xs uppercase tracking-[0.16em] text-white/70">
+                                    {item.tryon_mode === "3d" ? "3D Avatar" : "2D Try-On"}
+                                  </p>
+                                  <p className="mt-1 text-sm font-medium line-clamp-2">
+                                    {isComplete
+                                      ? "Fit complete — drag the slider to reveal the change."
+                                      : isProcessing
+                                      ? "Your look is still stitching. It'll appear here the moment it's ready."
+                                      : "Look saved."}
+                                  </p>
+                                </div>
+                                <Link href={`/try?mode=${preferredMode}`} className="shrink-0">
+                                  <Button
+                                    size="sm"
+                                    className="bg-white text-foreground hover:bg-white/90 shadow-lg"
+                                  >
+                                    Remix <ArrowRight className="size-3.5" />
+                                  </Button>
+                                </Link>
+                              </div>
 
-                        {visibleFeedItems.length < tryons.length ? (
-                          <div ref={feedSentinelRef} className="py-4 text-center text-xs text-muted-foreground">
+                              {/* Reel index indicator (bottom-right dots-style) */}
+                              <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex flex-col gap-1.5">
+                                {visibleFeedItems.slice(0, Math.min(visibleFeedItems.length, 6)).map((dot, dotIdx) => (
+                                  <span
+                                    key={dot.id}
+                                    className={`block rounded-full transition-all ${
+                                      dotIdx === index
+                                        ? "h-6 w-1 bg-white/95"
+                                        : "h-1.5 w-1 bg-white/40"
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </motion.article>
+                          )
+                        })}
+
+                        {visibleFeedItems.length < feedItems.length ? (
+                          <div ref={feedSentinelRef} className="h-24 flex items-center justify-center text-xs text-white bg-black/40">
                             Loading more looks...
                           </div>
                         ) : (
-                          <div className="py-4 text-center text-xs text-muted-foreground">
-                            You reached the end of your current feed.
+                          <div className="h-20 flex items-center justify-center text-xs text-muted-foreground bg-gradient-to-b from-slate-50 to-white">
+                            You&apos;ve seen every look. Try a new outfit to add more.
                           </div>
                         )}
                       </div>
@@ -972,11 +1274,24 @@ export default function Page() {
                       onChange={(event) => setNewGarmentDescription(event.target.value)}
                       placeholder="Description (optional)"
                     />
-                    <Input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      onChange={(event) => setNewGarmentFile(event.target.files?.[0] ?? null)}
-                    />
+                    <div
+                      {...garmentDropzone.getRootProps()}
+                      className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-4 text-center text-xs transition-colors ${
+                        garmentDropzone.isDragActive
+                          ? "border-primary/70 bg-primary/5 text-primary"
+                          : "border-border/70 bg-muted/30 text-muted-foreground hover:border-primary/50"
+                      }`}
+                    >
+                      <input {...garmentDropzone.getInputProps()} />
+                      <Upload className="size-5" />
+                      {newGarmentFile ? (
+                        <span className="font-medium text-foreground">{newGarmentFile.name}</span>
+                      ) : (
+                        <span>
+                          Drop a garment image here, or <span className="font-semibold text-primary">click to browse</span>
+                        </span>
+                      )}
+                    </div>
                     <Button
                       className="w-full gap-2 bg-gradient-to-r from-primary to-sky-500 text-white"
                       onClick={() => void handleUploadGarment()}
@@ -1141,13 +1456,68 @@ export default function Page() {
                     <div className="flex items-center gap-3 rounded-lg border border-border/70 p-3">
                       <UserCircle2 className="size-8 text-primary" />
                       <div>
-                        <p className="text-sm font-medium">{user?.full_name || "ALTER.ai User"}</p>
+                        <p className="text-sm font-medium">{user?.full_name || "GradFiT User"}</p>
                         <p className="text-xs text-muted-foreground">{user?.email}</p>
                       </div>
                     </div>
                     <Button variant="outline" className="w-full justify-start gap-2" onClick={logout}>
                       <LogOut className="size-4" />
                       Sign out
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white/72 backdrop-blur-lg border-border/70">
+                  <CardHeader>
+                    <CardTitle className="text-lg">Profile photo</CardTitle>
+                    <CardDescription>
+                      Upload once -- every try-on, the dashboard, and the
+                      Chrome extension reuse this photo automatically.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center gap-3 rounded-lg border border-border/70 p-3">
+                      <div className="size-14 overflow-hidden rounded-xl border border-border/70 bg-gradient-to-br from-primary/10 via-sky-500/10 to-emerald-400/10">
+                        {user?.default_person_smart_crop_url || user?.default_person_image_url ? (
+                          <img
+                            src={
+                              user.default_person_smart_crop_url ||
+                              user.default_person_image_url ||
+                              ""
+                            }
+                            alt="Saved photo"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                            <UserCircle2 className="size-7" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          {user?.default_person_image_url ? "Saved photo" : "No photo yet"}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {user?.default_person_uploaded_at
+                            ? `Updated ${new Date(user.default_person_uploaded_at).toLocaleDateString()}`
+                            : "Add your photo to skip uploads on every try-on."}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant={user?.default_person_image_url ? "outline" : "default"}
+                      className={
+                        user?.default_person_image_url
+                          ? "w-full"
+                          : "w-full bg-gradient-to-r from-primary to-sky-500 text-white"
+                      }
+                      onClick={() => {
+                        setPhotoWizardForceOnboarding(false)
+                        setPhotoWizardOpen(true)
+                      }}
+                    >
+                      {user?.default_person_image_url ? "Update photo" : "Add photo"}
                     </Button>
                   </CardContent>
                 </Card>
@@ -1210,6 +1580,87 @@ export default function Page() {
           </main>
         </div>
       </div>
+      {activeTryOnId && activeTryOnStatus && activeTryOnStatus.status !== "completed" && activeTryOnStatus.status !== "failed" && activeTryOnStatus.status !== "dead_letter" ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4 sm:px-6">
+          <div className="pointer-events-auto w-full max-w-3xl rounded-2xl border border-border/70 bg-white/95 shadow-2xl backdrop-blur supports-[backdrop-filter]:bg-white/80">
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+                  <span className="relative inline-flex size-2 rounded-full bg-primary" />
+                </span>
+                Try-on #{activeTryOnId} in progress
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setStickyDrawerCollapsed((v) => !v)}
+                >
+                  {stickyDrawerCollapsed ? "Expand" : "Collapse"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setActiveTryOnId(null)}
+                >
+                  Hide
+                </Button>
+              </div>
+            </div>
+            {!stickyDrawerCollapsed ? (
+              <div className="border-t border-border/60 px-4 py-3">
+                <PipelineMeter status={activeTryOnStatus} mode={preferredMode} />
+                {activeTryOnStatus.error_message ? (
+                  <p className="mt-2 text-xs text-destructive">{activeTryOnStatus.error_message}</p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="border-t border-border/60 px-4 py-2">
+                <PipelineMeter status={activeTryOnStatus} mode={preferredMode} compact />
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        onOpenPhotoWizard={() => {
+          setPhotoWizardForceOnboarding(false)
+          setPhotoWizardOpen(true)
+        }}
+        onJumpToTab={(tab) => setActiveNav(tab)}
+      />
+      <PhotoWizard
+        open={photoWizardOpen}
+        onOpenChange={(next) => {
+          setPhotoWizardOpen(next)
+          if (!next) setPhotoWizardForceOnboarding(false)
+        }}
+        forceOnboarding={photoWizardForceOnboarding}
+        initialPhoto={
+          user?.default_person_image_url
+            ? {
+                url: user.default_person_image_url,
+                smart_crop_url: user.default_person_smart_crop_url ?? null,
+                face_url: user.default_person_face_url ?? null,
+                uploaded_at: user.default_person_uploaded_at ?? null,
+                gate: (user.default_person_input_gate_metrics as
+                  | {
+                      passed: boolean
+                      reasons: string[]
+                      smart_cropped: boolean
+                      metrics: Record<string, unknown>
+                    }
+                  | null) ?? null,
+                has_embedding: false,
+              }
+            : null
+        }
+      />
     </div>
   )
 }

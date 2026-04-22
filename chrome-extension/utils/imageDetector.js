@@ -1,5 +1,5 @@
 // ============================================================
-// Enhanced Image Detection Utilities for ALTER.ai Chrome Extension
+// Enhanced Image Detection Utilities for GradFiT Chrome Extension
 // Advanced garment/clothing recognition with multi-signal scoring
 // ============================================================
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import ReactCompareImage from "react-compare-image"
+import { OutfitRevealSlider } from "@/components/outfit-reveal-slider"
 import Script from "next/script"
 import {
   X,
@@ -36,6 +36,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { BuyThisButton } from "@/components/affiliate/buy-this-button"
 
 type ResultsModalProps = {
   open: boolean
@@ -49,6 +50,11 @@ type ResultsModalProps = {
   onSaveToWardrobe?: () => void
   isAuthenticated?: boolean
   onLogin?: () => void
+  /** When present we render a "Buy this" affiliate CTA below the result. */
+  garmentId?: number
+  tryonId?: number
+  /** Optional raw source URL -- used as a fallback for non-owned garments. */
+  garmentSourceUrl?: string | null
 }
 
 type DownloadFormat = "jpg" | "png"
@@ -65,6 +71,9 @@ export function ResultsModal({
   onSaveToWardrobe,
   isAuthenticated = false,
   onLogin,
+  garmentId,
+  tryonId,
+  garmentSourceUrl,
 }: ResultsModalProps) {
   const [downloadFormat, setDownloadFormat] = useState<DownloadFormat>("png")
   const [isDownloading, setIsDownloading] = useState(false)
@@ -287,13 +296,10 @@ export function ResultsModal({
                     transition={{ duration: 0.3 }}
                     className="relative w-full h-full min-h-[500px] max-h-[calc(95vh-200px)]"
                   >
-                    <ReactCompareImage
-                      leftImage={beforeImage}
-                      rightImage={afterImage}
-                      leftImageLabel="Before"
-                      rightImageLabel="After"
-                      sliderLineColor="rgb(139, 92, 246)"
-                      sliderLineWidth={2}
+                    <OutfitRevealSlider
+                      afterImage={afterImage}
+                      beforeImage={beforeImage}
+                      accentColor="rgb(139, 92, 246)"
                     />
 
                     <motion.div
@@ -303,7 +309,7 @@ export function ResultsModal({
                       className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-background/80 backdrop-blur-sm rounded-full px-4 py-2 flex items-center gap-2 text-xs text-muted-foreground pointer-events-none"
                     >
                       <ChevronLeft className="size-3" />
-                      <span>Drag slider to compare • Press ESC to close</span>
+                      <span>Drag the handle to reveal your new outfit • Press ESC to close</span>
                       <ChevronRight className="size-3" />
                     </motion.div>
                   </motion.div>
@@ -408,6 +414,20 @@ export function ResultsModal({
                   Try Another Outfit
                 </Button>
               </div>
+
+              {/* Buy this (affiliate CTA). Only renders when we have a
+                  retailer URL we can attribute. */}
+              {(garmentId || garmentSourceUrl) && (
+                <div className="pt-2 border-t">
+                  <BuyThisButton
+                    garmentId={garmentId}
+                    tryonId={tryonId}
+                    sourceUrl={garmentSourceUrl}
+                    variant="card"
+                    hideWhenNoSource
+                  />
+                </div>
+              )}
 
               {/* Share Buttons */}
               <div className="flex items-center gap-2 pt-2 border-t">

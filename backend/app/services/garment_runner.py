@@ -1,5 +1,5 @@
 """
-ALTER.AI - Garment Preprocess Runner
+GradFiT - Garment Preprocess Runner
 
 Shared garment preprocessing logic used by Celery workers and
 synchronous fallback execution.

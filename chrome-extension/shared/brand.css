@@ -1,0 +1,57 @@
+/* GradFiT shared brand tokens for the Chrome extension.
+ *
+ * Mirror of frontend/lib/brand.ts. Keep both in sync when colors change.
+ * The canonical brand gradient runs Primary -> Sky -> Emerald; it powers
+ * the popup header, the floating "Try with my photo" button on product
+ * pages, and the inline progress meter so the extension feels like an
+ * extension of the web app, not a different product.
+ */
+
+:root {
+  --gradfit-primary: #4F7CFF;
+  --gradfit-primary-deep: #3F66E0;
+  --gradfit-sky: #0EA5E9;
+  --gradfit-emerald: #34D399;
+  --gradfit-emerald-deep: #10B981;
+  --gradfit-ink: #1B2336;
+  --gradfit-ink-soft: #3B4664;
+  --gradfit-surface: #FFFFFF;
+  --gradfit-surface-tint: rgba(255, 255, 255, 0.72);
+  --gradfit-border: #E2E8F0;
+  --gradfit-glow: rgba(79, 124, 255, 0.25);
+
+  --gradfit-gradient: linear-gradient(
+    135deg,
+    var(--gradfit-primary) 0%,
+    var(--gradfit-sky) 50%,
+    var(--gradfit-emerald) 100%
+  );
+
+  --gradfit-mesh:
+    radial-gradient(380px 220px at 0% 0%, rgba(79, 124, 255, 0.22), transparent 55%),
+    radial-gradient(360px 220px at 100% 0%, rgba(14, 165, 233, 0.18), transparent 58%),
+    radial-gradient(360px 220px at 50% 100%, rgba(52, 211, 153, 0.16), transparent 55%);
+
+  --gradfit-shadow-card: 0 12px 32px rgba(27, 35, 54, 0.12);
+  --gradfit-shadow-floating: 0 18px 48px rgba(79, 124, 255, 0.28);
+  --gradfit-radius-lg: 14px;
+  --gradfit-radius-md: 10px;
+  --gradfit-radius-sm: 6px;
+  --gradfit-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+    Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Reusable utilities the popup + content overlay both consume. */
+.gradfit-gradient-bg { background: var(--gradfit-gradient); }
+.gradfit-gradient-text {
+  background: var(--gradfit-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.gradfit-glass {
+  background: var(--gradfit-surface-tint);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--gradfit-border);
+}

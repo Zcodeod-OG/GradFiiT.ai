@@ -1,11 +1,11 @@
-# ALTER.AI - Business Plan & Launch Strategy
+# GradFiT - Business Plan & Launch Strategy
 **Confidential - Executive Summary**
 
 ---
 
 ## 📋 Executive Summary
 
-**Project Name:** ALTER.AI - AI-Powered Virtual Fashion Try-On Platform
+**Project Name:** GradFiT - AI-Powered Virtual Fashion Try-On Platform
 **Launch Date:** April 14, 2026 (15 days from March 30, 2026)
 **Current Status:** 70% Development Complete, Ready for Production Hardening
 **Market Focus:** Fashion E-Commerce, Retail Technology, Direct-to-Consumer (D2C)
@@ -103,7 +103,7 @@
 2. **Functionality**
    - Automatic clothing item detection on fashion websites
    - Overlay highlighting for detected items
-   - Direct integration with ALTER.AI platform
+   - Direct integration with GradFiT platform
    - Cross-site compatibility (Amazon, Etsy, Shopify stores)
 
 #### **Phase 5: DevOps & Operations (75% Complete)**
@@ -375,7 +375,7 @@
 ## 📱 **MARKETING STRATEGY & CAMPAIGN PLAN**
 
 ### **OBJECTIVE**
-Launch ALTER.AI as the #1 fashion tech platform for virtual try-ons with 50K+ pre-registrations and 10K+ active users by end of April.
+Launch GradFiT as the #1 fashion tech platform for virtual try-ons with 50K+ pre-registrations and 10K+ active users by end of April.
 
 ### **TARGET AUDIENCE**
 - **Primary:** Women 18-35, fashion enthusiasts, online shoppers
@@ -398,7 +398,7 @@ Launch ALTER.AI as the #1 fashion tech platform for virtual try-ons with 50K+ pr
 
 **Platform: TikTok & YouTube Shorts**
 - **Content:** 15-30 second "transformation" videos
-  - "I ordered 5 outfits online... here's the before/after with ALTER.AI"
+  - "I ordered 5 outfits online... here's the before/after with GradFiT"
   - "Styling dilemma? Let AI decide" (split-screen transformations)
   - "POV: You'll never return clothes again"
 
@@ -436,7 +436,7 @@ Launch ALTER.AI as the #1 fashion tech platform for virtual try-ons with 50K+ pr
 2. Day 3: Feature spotlight + demo video
 3. Day 5: "Here's why you'll love it" + social proof
 4. Day 7: "3 Days Until Launch" + early access offer
-5. Day 14: "ALTER.AI is LIVE!" + direct link
+5. Day 14: "GradFiT is LIVE!" + direct link
 
 **C. Community Building**
 
@@ -468,7 +468,7 @@ Launch ALTER.AI as the #1 fashion tech platform for virtual try-ons with 50K+ pr
 
 **Video Production**
 - 10+ high-quality demo videos showing real transformations
-- Tutorial: "How to use ALTER.AI" (5 min walkthrough)
+- Tutorial: "How to use GradFiT" (5 min walkthrough)
 - Testimonials: Get 5-10 beta users to record short reviews
 - Budget: $800 for video editor / stock footage
 
@@ -500,7 +500,7 @@ Launch ALTER.AI as the #1 fashion tech platform for virtual try-ons with 50K+ pr
 **A. Launch Day (April 14 evening / April 15 morning)**
 
 **Launch Timeline:**
-- T-24h: "ALTER.AI Launches Tommorow" teaser across all channels
+- T-24h: "GradFiT Launches Tommorow" teaser across all channels
 - T-0: Site goes live, pre-registrants get automatic email with invite link
 - T+2h: First "user testimonial" video posted on TikTok (beta user)
 - T+4h: Press release distribution (Tech Crunch, VentureBeat, Fashion United)
@@ -830,10 +830,10 @@ For 10 test users:
 
  checks
 - [ ] Monitor: Error logs, API response times, database connections for 10 min
-- [ ] Slack alert: "ALTER.AI is LIVE 🚀"
+- [ ] Slack alert: "GradFiT is LIVE 🚀"
 
 **T+0 (6:15am):**
-- [ ] Send email: "ALTER.AI is LIVE - Click here to get started" (10K pre-registrants)
+- [ ] Send email: "GradFiT is LIVE - Click here to get started" (10K pre-registrants)
 - [ ] Post on all social: "WE'RE LIVE 🎉 Try it now →"
 - [ ] Influencers notified: Begin sharing content
 
@@ -1088,7 +1088,7 @@ For 10 test users:
 
 ## 🚀 **CONCLUSION**
 
-ALTER.AI is technically ready for launch with 70% of development complete and production-hardening processes documented. The **critical path to success** hinges on:
+GradFiT is technically ready for launch with 70% of development complete and production-hardening processes documented. The **critical path to success** hinges on:
 
 1. **Execution of deployment checklist (April 1-5)** - No technical blockers, process-driven
 2. **Marketing campaign activation (April 7+)** - Currently lagging, requires immediate investment

@@ -1,5 +1,5 @@
 """
-ALTER.AI - 5-Stage Virtual Try-On Pipeline
+GradFiT - 5-Stage Virtual Try-On Pipeline
 
 Stage 0: Garment Extraction (lucataco/remove-bg)
 Stage 1: OOTDiffusion (configurable Replicate model) — virtual try-on
@@ -14,8 +14,10 @@ in a background thread to avoid blocking the FastAPI event loop.
 
 import logging
 import time
+import threading
 from typing import Optional, Dict, Any, List
 
+from app.config import settings
 from app.services.replicate import get_replicate_service
 from app.services.garment_processor import get_garment_processor
 from app.services.quality_gate import get_quality_gate_service
@@ -40,7 +42,7 @@ class PipelineConfig:
             "skip_extraction": False,
             "skip_quality_gate": True,
             "skip_refinement": True,
-            "skip_rating": False,
+            "skip_rating": True,
             "description": "OOTDiffusion only, no refinement",
         },
         "balanced": {
@@ -88,6 +90,41 @@ class PipelineService:
         self.replicate_service = get_replicate_service()
         self.garment_processor = get_garment_processor()
         self.quality_gate = get_quality_gate_service()
+
+    def _run_with_timeout(
+        self,
+        fn,
+        timeout_seconds: int,
+        default_result: Dict[str, Any],
+        stage_label: str,
+    ) -> Dict[str, Any]:
+        """Run blocking stage logic with a hard timeout and safe fallback."""
+        result_holder: Dict[str, Any] = {}
+        error_holder: Dict[str, Exception] = {}
+
+        def _runner() -> None:
+            try:
+                result_holder["result"] = fn()
+            except Exception as exc:  # pragma: no cover - defensive fallback
+                error_holder["error"] = exc
+
+        worker = threading.Thread(target=_runner, daemon=True)
+        worker.start()
+        worker.join(max(1, int(timeout_seconds)))
+
+        if worker.is_alive():
+            logger.warning(
+                "Pipeline %s timed out after %ss; using fallback result",
+                stage_label,
+                timeout_seconds,
+            )
+            return default_result
+
+        if "error" in error_holder:
+            raise error_holder["error"]
+
+        result = result_holder.get("result")
+        return result if isinstance(result, dict) else default_result
 
     # ──────────────────────────────────────────────────────────
     # Stage 0: Garment Extraction
@@ -143,8 +180,17 @@ class PipelineService:
         )
 
         output_url = result.get("output_url")
+        # Replicate may return: a string URL, a list of strings/FileOutput,
+        # a single FileOutput, or a generator. Normalize to a single URL string.
+        if output_url is not None and not isinstance(output_url, (str, list)):
+            try:
+                output_url = list(output_url)
+            except TypeError:
+                pass
         if isinstance(output_url, list):
-            output_url = output_url[0]
+            output_url = output_url[0] if output_url else None
+        if output_url is not None:
+            output_url = str(output_url)
 
         logger.info(f"Pipeline Stage 1: OOTDiffusion completed → {output_url}")
         return {"output_url": output_url, "status": "succeeded"}
@@ -396,6 +442,7 @@ class PipelineService:
         quality: str = "balanced",
         preprocessed_garment_url: Optional[str] = None,
         on_stage_update=None,
+        on_artifact_update=None,
     ) -> Dict[str, Any]:
         """Run the complete 5-stage pipeline.
 
@@ -412,6 +459,9 @@ class PipelineService:
         preset = PipelineConfig.get_preset(quality)
         start_time = time.time()
         timings: Dict[str, float] = {}
+        stage0_status = "skipped"
+        stage1_status = "pending"
+        stage2_status = "skipped"
 
         # ── Stage 0: Garment Extraction ──────────────────────
         extracted_garment_url = preprocessed_garment_url or garment_image_url
@@ -421,9 +471,20 @@ class PipelineService:
             if on_stage_update:
                 on_stage_update("garment_extracting")
             s0_start = time.time()
-            stage0_result = self.run_stage0_garment_extraction(garment_image_url)
+            stage0_result = self._run_with_timeout(
+                fn=lambda: self.run_stage0_garment_extraction(garment_image_url),
+                timeout_seconds=settings.TRYON_STAGE0_TIMEOUT_SECONDS,
+                default_result={
+                    "extracted_garment_url": garment_image_url,
+                    "status": "timeout",
+                },
+                stage_label="stage0_extraction",
+            )
             timings["stage0_extraction_seconds"] = round(time.time() - s0_start, 1)
             extracted_garment_url = stage0_result["extracted_garment_url"]
+            stage0_status = stage0_result.get("status", "succeeded")
+            if on_artifact_update:
+                on_artifact_update({"extracted_garment_url": extracted_garment_url})
             if on_stage_update:
                 on_stage_update("garment_extracted")
 
@@ -431,14 +492,29 @@ class PipelineService:
         if on_stage_update:
             on_stage_update("stage1_processing")
         s1_start = time.time()
-        stage1_result = self.run_stage1_oot_diffusion(
-            person_image_url=person_image_url,
-            garment_image_url=extracted_garment_url,
-            garment_description=garment_description,
-            garment_category=garment_category,
+        stage1_result = self._run_with_timeout(
+            fn=lambda: self.run_stage1_oot_diffusion(
+                person_image_url=person_image_url,
+                garment_image_url=extracted_garment_url,
+                garment_description=garment_description,
+                garment_category=garment_category,
+            ),
+            timeout_seconds=settings.TRYON_STAGE1_TIMEOUT_SECONDS,
+            default_result={
+                "output_url": None,
+                "status": "timeout",
+            },
+            stage_label="stage1_vton",
         )
         timings["stage1_vton_seconds"] = round(time.time() - s1_start, 1)
         stage1_url = stage1_result["output_url"]
+        stage1_status = stage1_result.get("status", "unknown")
+        if not stage1_url:
+            raise RuntimeError(
+                "Stage-1 try-on did not return an output image (provider timeout or empty response)."
+            )
+        if on_artifact_update:
+            on_artifact_update({"stage1_url": stage1_url, "final_url": stage1_url})
         if on_stage_update:
             on_stage_update("stage1_completed")
 
@@ -452,11 +528,28 @@ class PipelineService:
             if on_stage_update:
                 on_stage_update("quality_checking")
             s2_start = time.time()
-            quality_gate_result = self.run_stage2_quality_gate(
-                garment_image_url=extracted_garment_url,
-                tryon_result_url=stage1_url,
+            quality_gate_result = self._run_with_timeout(
+                fn=lambda: self.run_stage2_quality_gate(
+                    garment_image_url=extracted_garment_url,
+                    tryon_result_url=stage1_url,
+                ),
+                timeout_seconds=settings.TRYON_STAGE2_TIMEOUT_SECONDS,
+                default_result={
+                    "passed": True,
+                    "similarity_score": None,
+                    "clip_similarity": None,
+                    "color_similarity": None,
+                    "edge_similarity": None,
+                    "refinement_mode": "none",
+                    "refinement_strength": 0.0,
+                    "garment_embedding": [],
+                    "result_embedding": [],
+                    "status": "timeout",
+                },
+                stage_label="stage2_quality_gate",
             )
             timings["stage2_quality_seconds"] = round(time.time() - s2_start, 1)
+            stage2_status = quality_gate_result.get("status", "succeeded")
             garment_embedding = quality_gate_result.get("garment_embedding", [])
             result_embedding = quality_gate_result.get("result_embedding", [])
 
@@ -475,7 +568,8 @@ class PipelineService:
             else None
         )
         if (
-            not preset.get("skip_refinement", False)
+            settings.TRYON_ENABLE_REFINEMENT
+            and not preset.get("skip_refinement", False)
             and quality_gate_result is not None
             and quality_gate_result.get("refinement_mode") == "heavy"
             and stage1_url
@@ -483,25 +577,37 @@ class PipelineService:
             if on_stage_update:
                 on_stage_update("stage2_processing")
             s3_start = time.time()
-            stage3_result = self.run_stage3_refinement(
-                stage1_image_url=stage1_url,
-                quality_preset=preset,
-                refinement_strength=quality_gate_result["refinement_strength"],
-                garment_description=garment_description,
-                refinement_mode=quality_gate_result.get("refinement_mode", "heavy"),
+            stage3_result = self._run_with_timeout(
+                fn=lambda: self.run_stage3_refinement(
+                    stage1_image_url=stage1_url,
+                    quality_preset=preset,
+                    refinement_strength=quality_gate_result["refinement_strength"],
+                    garment_description=garment_description,
+                    refinement_mode=quality_gate_result.get("refinement_mode", "heavy"),
+                ),
+                timeout_seconds=settings.TRYON_STAGE3_TIMEOUT_SECONDS,
+                default_result={
+                    "output_url": stage1_url,
+                    "status": "timeout",
+                    "method": "stage1_fallback",
+                    "refinement_mode": "skipped",
+                },
+                stage_label="stage3_refinement",
             )
             timings["stage3_refinement_seconds"] = round(time.time() - s3_start, 1)
             final_url = stage3_result["output_url"]
             ran_refinement = True
             # Clear result_embedding since the image changed
             result_embedding = []
+            if on_artifact_update:
+                on_artifact_update({"final_url": final_url})
         elif quality_gate_result is not None and refinement_mode == "light":
             # Light corrections avoid full-frame refinement to keep latency low.
             timings["stage3_refinement_seconds"] = 0.0
 
         # ── Stage 4: Final Rating ────────────────────────────
         rating_score = None
-        if not preset.get("skip_rating", False):
+        if settings.TRYON_ENABLE_RATING and not preset.get("skip_rating", False):
             if on_stage_update:
                 on_stage_update("rating_computing")
             s4_start = time.time()
@@ -515,10 +621,15 @@ class PipelineService:
             # Reuse result embedding only if final_url didn't change
             reuse_emb = result_embedding if (not ran_refinement and result_embedding) else None
 
-            stage4_result = self.run_stage4_rating(
-                garment_embedding=garment_embedding,
-                final_image_url=final_url,
-                result_embedding=reuse_emb,
+            stage4_result = self._run_with_timeout(
+                fn=lambda: self.run_stage4_rating(
+                    garment_embedding=garment_embedding,
+                    final_image_url=final_url,
+                    result_embedding=reuse_emb,
+                ),
+                timeout_seconds=settings.TRYON_STAGE4_TIMEOUT_SECONDS,
+                default_result={"rating_score": None, "status": "timeout"},
+                stage_label="stage4_rating",
             )
             timings["stage4_rating_seconds"] = round(time.time() - s4_start, 1)
             rating_score = stage4_result.get("rating_score")
@@ -565,12 +676,17 @@ class PipelineService:
             ),
             "rating_score": rating_score,
             "timings": timings,
+            "stage_status": {
+                "stage0": stage0_status,
+                "stage1": stage1_status,
+                "stage2": stage2_status,
+            },
             "stages_run": {
                 "extraction": not skip_extraction,
                 "vton": True,
                 "quality_gate": not preset.get("skip_quality_gate", False),
                 "refinement": ran_refinement,
-                "rating": not preset.get("skip_rating", False),
+                "rating": settings.TRYON_ENABLE_RATING and not preset.get("skip_rating", False),
             },
         }
 

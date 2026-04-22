@@ -1,5 +1,5 @@
 """
-ALTER.AI - Garment Processing Service
+GradFiT - Garment Processing Service
 
 Handles garment image processing via Replicate API:
 - Background removal (lucataco/remove-bg)
@@ -67,7 +67,7 @@ class GarmentProcessor:
 
     def _key(self, prefix: str, payload: str) -> str:
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-        return f"alterai:{prefix}:{digest}"
+        return f"gradfit:{prefix}:{digest}"
 
     def remove_background(self, image_url: str) -> str:
         """Remove background from a garment image using Replicate remove-bg.

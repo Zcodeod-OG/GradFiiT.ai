@@ -60,7 +60,11 @@
 html,
 body {
   width: 100%;
-  overflow-x: hidden;
+  /* overflow-x: clip (not hidden) so `position: sticky` still works on
+     descendants. overflow-x: hidden turns html into a scroll container
+     and silently disables every sticky pin on the site, which is
+     exactly what broke the ScrollStory scrollytelling. */
+  overflow-x: clip;
 }
 
 body {
@@ -207,10 +211,33 @@ h6,
   }
 }
 
+/* Hide the scrollbar on the dashboard's TikTok-style Runway Feed reel.
+ * The scroller still works (keyboard + wheel + touch) -- we just don't
+ * want a chunky OS scrollbar overlaying the image. Firefox support is
+ * declared inline via `scrollbar-width: none`. */
+.runway-reel::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pulse-glow,
   .shimmer::after,
   .ambient-float {
     animation: none;
+  }
+
+  /* Global reduced-motion sweep: scale every animation/transition down to
+   * a near-instant duration so the UI still updates but nothing flashes,
+   * scrolls, or floats for users who opt out of motion. Component-level
+   * `useReducedMotion()` checks already disable Framer Motion physics; this
+   * catches any plain CSS that slipped through (auto-marquees, hover
+   * lifts, etc.). */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -9,6 +9,7 @@ from app.models.user import User
 from app.schemas.user import UserCreate, User as UserSchema
 from app.config import settings
 from app.api.deps import get_current_active_user
+from app.services.storage import get_storage
 from app.services.subscription import PLAN_RULES
 from passlib.context import CryptContext
 from passlib.exc import UnknownHashError
@@ -122,6 +123,26 @@ def login(
 
 @router.get("/me", response_model=UserSchema)
 def read_users_me(current_user: User = Depends(get_current_active_user)):
-    """Get current user information"""
-    return current_user
+    """Get current user information.
+
+    Rewrites any private S3 URLs on the user record (default person
+    photo, smart-crop, cropped face) to short-lived presigned URLs so
+    the frontend can render them directly in <img src> without 403ing.
+    """
+    payload = UserSchema.model_validate(current_user)
+
+    storage = get_storage()
+
+    def _sign(url: str | None) -> str | None:
+        if not url:
+            return url
+        try:
+            return storage.to_provider_access_url(url, expiration=3600) or url
+        except Exception:
+            return url
+
+    payload.default_person_image_url = _sign(payload.default_person_image_url)
+    payload.default_person_smart_crop_url = _sign(payload.default_person_smart_crop_url)
+    payload.default_person_face_url = _sign(payload.default_person_face_url)
+    return payload
 

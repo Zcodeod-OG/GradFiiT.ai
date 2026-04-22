@@ -1,5 +1,5 @@
 """
-ALTER.AI - Quality Gate Service
+GradFiT - Quality Gate Service
 
 Evaluates virtual try-on output quality using CLIP cosine similarity.
 Also computes the final 1-5 star rating for completed try-ons.

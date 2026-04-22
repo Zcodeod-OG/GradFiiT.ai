@@ -1,5 +1,5 @@
 // ============================================================
-// ALTER.ai Chrome Extension - Content Script
+// GradFiT Chrome Extension - Content Script
 // Enhanced garment detection + Quick Try-On Sidebar
 // ============================================================
 (function () {
@@ -10,7 +10,10 @@
     duplicateCheckWindow: 5000, clickAnimationDuration: 900,
     detectionThreshold: 4, maxScanDepth: 10,
     appUrl: 'http://localhost:3000', maxSidebarGarments: 10, maxHistoryItems: 20,
-    quickTryOnTimeoutMs: 25000, themeRefreshThrottleMs: 1500,
+    // Must comfortably exceed the SW's 180s poll window in background.js
+    // (Fashn's own max_wait is also 180s). 210s gives ~30s headroom for
+    // the final sendResponse round-trip so we never cut the SW off early.
+    quickTryOnTimeoutMs: 210000, themeRefreshThrottleMs: 1500,
   };
 
   var imageOverlays = new Map();
@@ -22,6 +25,84 @@
   var intersectionMutationObserver = null;
   var initDone = false;
   var sidebarThemeState = { lastAppliedAt: 0 };
+  var spaCheckInterval = null;
+  var contextInvalidated = false;
+
+  // ------------------------------------------------------------------
+  // Extension-context survival helpers
+  //
+  // When the user reloads the extension in chrome://extensions, every
+  // content script already injected into pages loses access to the
+  // runtime (chrome.runtime.id becomes undefined). Any subsequent
+  // chrome.* call throws "Extension context invalidated" and, if left
+  // inside a setInterval, floods the console. We detect the situation
+  // once and then short-circuit every API call + tear down our timers
+  // and observers so the page stays quiet.
+  // ------------------------------------------------------------------
+  function isExtensionContextValid() {
+    try {
+      return !!(typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id);
+    } catch (_e) {
+      return false;
+    }
+  }
+
+  function markContextInvalidated() {
+    if (contextInvalidated) return;
+    contextInvalidated = true;
+    try { cleanup(); } catch (_e) {}
+    if (spaCheckInterval) { try { clearInterval(spaCheckInterval); } catch (_e) {} spaCheckInterval = null; }
+  }
+
+  function safeSendMessage(payload, callback) {
+    if (!isExtensionContextValid()) {
+      markContextInvalidated();
+      if (typeof callback === 'function') {
+        try { callback({ success: false, error: 'Extension was reloaded. Refresh this tab to use GradFiT again.' }); } catch (_e) {}
+      }
+      return false;
+    }
+    try {
+      chrome.runtime.sendMessage(payload, function (response) {
+        if (chrome.runtime.lastError) {
+          var msg = chrome.runtime.lastError.message || '';
+          if (msg.indexOf('context invalidated') !== -1 || msg.indexOf('Receiving end does not exist') !== -1) {
+            markContextInvalidated();
+          }
+          if (typeof callback === 'function') {
+            try { callback({ success: false, error: msg || 'Extension message failed' }); } catch (_e) {}
+          }
+          return;
+        }
+        if (typeof callback === 'function') {
+          try { callback(response); } catch (_e) {}
+        }
+      });
+      return true;
+    } catch (err) {
+      var emsg = (err && err.message) || '';
+      if (emsg.indexOf('context invalidated') !== -1) {
+        markContextInvalidated();
+      }
+      if (typeof callback === 'function') {
+        try { callback({ success: false, error: emsg || 'Extension message failed' }); } catch (_e) {}
+      }
+      return false;
+    }
+  }
+
+  function safeStorageSet(obj) {
+    if (!isExtensionContextValid()) return;
+    try { chrome.storage.local.set(obj); } catch (_e) { markContextInvalidated(); }
+  }
+  function safeStorageRemove(key) {
+    if (!isExtensionContextValid()) return;
+    try { chrome.storage.local.remove(key); } catch (_e) { markContextInvalidated(); }
+  }
+  function safeStorageGet(key, cb) {
+    if (!isExtensionContextValid()) { if (typeof cb === 'function') cb({}); return; }
+    try { chrome.storage.local.get(key, cb); } catch (_e) { markContextInvalidated(); if (typeof cb === 'function') cb({}); }
+  }
 
   var GARMENT_WORDS = ['dress','shirt','blouse','top','tee','t-shirt','tshirt','pants','trousers','jeans','denim','chinos','slacks','jacket','coat','blazer','cardigan','vest','sweater','sweatshirt','hoodie','pullover','jumper','skirt','shorts','suit','tuxedo','gown','romper','jumpsuit','overalls','leggings','tights','joggers','tracksuit','polo','henley','tank','camisole','bodysuit','kimono','kaftan','tunic','poncho','cape','parka','anorak','windbreaker','raincoat','trench','bikini','swimsuit','swimwear','lingerie','pajamas','robe','loungewear','activewear','sportswear','uniform','saree','sari','kurta','kurti','lehenga','salwar','abaya','hijab','dupatta','churidar'];
   var FOOTWEAR_WORDS = ['shoes','boots','sneakers','sandals','heels','flats','loafers','moccasins','oxfords','pumps','wedges','slippers','espadrilles','mules','clogs','trainers'];
@@ -523,7 +604,7 @@
 
       wrapper.appendChild(overlay);
       imageOverlays.set(img, { overlay: overlay, wrapper: wrapper });
-    } catch (err) { console.error('[ALTER.ai] Button error:', err); }
+    } catch (err) { console.error('[GradFiT] Button error:', err); }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -542,11 +623,11 @@
       duplicateCheckMap.set(normalizeImageUrl(md.imageUrl), Date.now());
       playImageAnimation(img);
       setTimeout(function() {
-        try { chrome.runtime.sendMessage({ action: 'tryOnProduct', metadata: md, timestamp: Date.now() }); } catch (e) { console.error('[ALTER.ai] msg error:', e); }
-        showToast('Opening ALTER.ai...', 'success');
+        try { chrome.runtime.sendMessage({ action: 'tryOnProduct', metadata: md, timestamp: Date.now() }); } catch (e) { console.error('[GradFiT] msg error:', e); }
+        showToast('Opening GradFiT...', 'success');
         setTimeout(function() { resetButton(button); }, 1500);
       }, CONFIG.clickAnimationDuration);
-    } catch (err) { console.error('[ALTER.ai] click error:', err); showToast('Error: ' + err.message, 'error'); resetButton(button); }
+    } catch (err) { console.error('[GradFiT] click error:', err); showToast('Error: ' + err.message, 'error'); resetButton(button); }
   }
 
   function handleQuickPreview(img) {
@@ -591,72 +672,34 @@
       callback(result || { success: false, error: 'Unknown quick preview error' });
     }
 
-    try {
-      timeoutId = setTimeout(function() {
-        finish({ success: false, error: 'Quick preview timed out' });
-      }, CONFIG.quickTryOnTimeoutMs);
+    timeoutId = setTimeout(function() {
+      finish({ success: false, error: 'Quick preview timed out' });
+    }, CONFIG.quickTryOnTimeoutMs);
 
-      chrome.runtime.sendMessage(
-        {
-          action: 'quickTryOn',
-          metadata: {
-            imageUrl: metadata.imageUrl,
-            title: metadata.title || '',
-            price: metadata.price || '',
-            brand: metadata.brand || '',
-            url: metadata.url || window.location.href,
-            quality: 'fast',
-            previewOnly: true,
-          },
+    safeSendMessage(
+      {
+        action: 'quickTryOn',
+        metadata: {
+          imageUrl: metadata.imageUrl,
+          title: metadata.title || '',
+          price: metadata.price || '',
+          brand: metadata.brand || '',
+          url: metadata.url || window.location.href,
+          quality: 'fast',
+          previewOnly: true,
         },
-        function(response) {
-          if (chrome.runtime.lastError) {
-            finish({ success: false, error: chrome.runtime.lastError.message || 'Quick preview request failed' });
-            return;
-          }
-          finish(response || { success: false, error: 'No response from quick preview service' });
-        }
-      );
-    } catch (err) {
-      finish({ success: false, error: err.message || 'Failed to send quick preview request' });
-    }
-  }
-
-  function buildMockMannequinPreview(garmentUrl) {
-    var safeGarment = escapeAttr(garmentUrl || '');
-    var svg = '' +
-      '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="960" viewBox="0 0 720 960">' +
-        '<defs>' +
-          '<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">' +
-            '<stop offset="0%" stop-color="#f6f3ff"/>' +
-            '<stop offset="100%" stop-color="#e6efff"/>' +
-          '</linearGradient>' +
-          '<radialGradient id="dressGlow" cx="50%" cy="40%" r="60%">' +
-            '<stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>' +
-            '<stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.18"/>' +
-          '</radialGradient>' +
-        '</defs>' +
-        '<rect x="0" y="0" width="720" height="960" fill="url(#bg)"/>' +
-        '<ellipse cx="360" cy="860" rx="180" ry="38" fill="#cbd5e1" opacity="0.45"/>' +
-        '<circle cx="360" cy="150" r="62" fill="#e2e8f0"/>' +
-        '<rect x="308" y="210" width="104" height="80" rx="46" fill="#e2e8f0"/>' +
-        '<rect x="220" y="270" width="280" height="430" rx="140" fill="#e2e8f0"/>' +
-        '<rect x="210" y="300" width="300" height="380" rx="130" fill="url(#dressGlow)"/>' +
-        '<rect x="120" y="320" width="100" height="260" rx="52" fill="#d8dee9"/>' +
-        '<rect x="500" y="320" width="100" height="260" rx="52" fill="#d8dee9"/>' +
-        '<rect x="282" y="680" width="70" height="180" rx="35" fill="#d8dee9"/>' +
-        '<rect x="368" y="680" width="70" height="180" rx="35" fill="#d8dee9"/>' +
-        '<rect x="206" y="294" width="308" height="388" rx="118" fill="#ffffff" opacity="0.28"/>' +
-        '<image href="' + safeGarment + '" x="228" y="300" width="264" height="360" preserveAspectRatio="xMidYMid slice" opacity="0.9"/>' +
-        '<text x="360" y="925" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#475569">Instant mannequin preview</text>' +
-      '</svg>';
-    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+      },
+      function(response) {
+        finish(response || { success: false, error: 'No response from quick preview service' });
+      }
+    );
   }
 
   function runQuickTryOn(metadata) {
     var norm = normalizeImageUrl(metadata.imageUrl || '');
     if (!norm) return;
 
+    // Cached successes are still re-shown instantly.
     if (quickPreviewCache.has(norm)) {
       setQuickPreviewForGarment(metadata.imageUrl, quickPreviewCache.get(norm), true);
       return;
@@ -669,24 +712,40 @@
 
     quickPreviewInFlight.set(norm, Date.now());
     setPreviewLoading(true);
+    // Clear any stale Buy-this CTA from a previous try-on so the user
+    // doesn't see a "Buy last item" link while the new one runs.
+    quickTryContext = null;
+    hideSidebarBuyLink();
+    showToast('Quick Try running in the background. Real try-on incoming...', 'info');
 
     requestQuickTryOn(metadata, function(response) {
       quickPreviewInFlight.delete(norm);
-      var resultUrl = response && response.success ? (response.resultUrl || response.result_image_url || '') : '';
-      var isGenerated = !!(response && response.success && !response.isFallback);
-
-      if (!resultUrl) {
-        resultUrl = buildMockMannequinPreview(metadata.imageUrl);
-        isGenerated = false;
-      }
-
-      quickPreviewCache.set(norm, resultUrl);
-      setQuickPreviewForGarment(metadata.imageUrl, resultUrl, isGenerated);
       setPreviewLoading(false);
 
-      if (!response || !response.success) showToast('Quick preview fallback ready', 'info');
-      else if (response.isFallback) showToast('Showing instant preview', 'info');
-      else showToast('Quick preview ready', 'success');
+      var resultUrl = response && response.success ? (response.resultUrl || response.result_image_url || '') : '';
+
+      if (resultUrl) {
+        // Only cache real generated results - never placeholder or error URLs.
+        quickPreviewCache.set(norm, resultUrl);
+        setQuickPreviewForGarment(metadata.imageUrl, resultUrl, true);
+        showToast('Quick Try ready', 'success');
+        // Buy-this: background.js now echoes back the garmentId +
+        // sourceUrl it used, so the affiliate CTA resolves without a
+        // second /garments lookup.
+        quickTryContext = {
+          tryonId: response.tryonId || null,
+          garmentId: response.garmentId || null,
+          sourceUrl: response.sourceUrl || metadata.url || window.location.href,
+        };
+        mountSidebarBuyLink();
+        return;
+      }
+
+      // No real result came back - surface a clear error instead of a
+      // fake mannequin. The original product image stays visible so the
+      // user isn't left staring at an empty preview pane.
+      var reason = (response && response.error) || 'Quick Try did not return a result';
+      showToast(reason, 'error');
     });
   }
 
@@ -742,6 +801,35 @@
   var sidebarBackdropEl = null;
   var sidebarState = { open: false, selectedGarments: [], history: [] };
 
+  // ─── Combo state ─────────────────────────────────────────────────
+  // Combo staging persists in chrome.storage.local so the user can
+  // "add to combo" on one retailer tab (e.g. a shirt from Zara), then
+  // switch to another tab (e.g. pants from H&M), and still see both
+  // slots populated in the sidebar. The `top` / `bottom` slots each
+  // hold one optional item. Each item is:
+  //   { imageUrl, title, sourceUrl, garmentId?, category, registering?,
+  //     addedAt }
+  var COMBO_STORAGE_KEY = 'gradfit_combo_staged';
+  var comboState = {
+    top: null,
+    bottom: null,
+    running: false,
+    tryOn: null, // { resultUrl, tryonId, primaryGarmentId }
+  };
+  // After a Quick Try (single garment) completes we remember the
+  // garment_id + source URL so the Buy-this CTA in the preview area
+  // can render without a second lookup. Cleared on new quick try.
+  var quickTryContext = null;
+
+  function normalizeCategory(str) {
+    if (!str) return '';
+    var s = (str + '').toLowerCase();
+    if (/\b(pant|trouser|jean|denim|chino|short|skirt|legging|joggers|slack)\b/.test(s)) return 'bottom';
+    if (/\b(shirt|tee|t-shirt|tshirt|blouse|top|hoodie|sweater|sweatshirt|jacket|coat|blazer|cardigan|vest|pullover|jumper|polo|henley|tank|camisole)\b/.test(s)) return 'top';
+    if (/\b(dress|gown|jumpsuit|romper|bodysuit|kurta|saree|sari|abaya|kaftan)\b/.test(s)) return 'dress';
+    return '';
+  }
+
   function createSidebar() {
     if (sidebarEl) return;
 
@@ -755,7 +843,7 @@
     sidebarToggleEl = document.createElement('div');
     sidebarToggleEl.id = 'tryon-ai-sidebar-toggle';
     sidebarToggleEl.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
-    sidebarToggleEl.title = 'ALTER.ai Quick Try-On';
+    sidebarToggleEl.title = 'GradFiT Quick Try-On';
     sidebarToggleEl.addEventListener('click', toggleSidebar);
     document.body.appendChild(sidebarToggleEl);
 
@@ -774,7 +862,7 @@
     return '<div class="tryon-sidebar-header">' +
       '<div class="tryon-sidebar-logo">' +
         '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7L12 12L22 7L12 2Z" fill="url(#sg1)" stroke="url(#sg2)" stroke-width="2"/><path d="M2 17L12 22L22 17" stroke="url(#sg2)" stroke-width="2"/><path d="M2 12L12 17L22 12" stroke="url(#sg2)" stroke-width="2"/><defs><linearGradient id="sg1" x1="2" y1="2" x2="22" y2="12"><stop stop-color="#8B5CF6"/><stop offset="1" stop-color="#3B82F6"/></linearGradient><linearGradient id="sg2" x1="2" y1="12" x2="22" y2="22"><stop stop-color="#8B5CF6"/><stop offset="1" stop-color="#3B82F6"/></linearGradient></defs></svg>' +
-        '<span class="tryon-sidebar-title">ALTER.ai</span>' +
+        '<span class="tryon-sidebar-title">GradFiT</span>' +
         '<span class="tryon-sidebar-badge">Quick</span>' +
       '</div>' +
       '<button class="tryon-sidebar-close" id="tryon-sidebar-close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>' +
@@ -791,6 +879,35 @@
           '<button class="tryon-action-btn tryon-action-primary" id="tryon-full-tryon-btn" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg><span>Full Try-On</span></button>' +
           '<button class="tryon-action-btn tryon-action-secondary" id="tryon-save-btn" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg><span>Save</span></button>' +
         '</div>' +
+        // Buy-this affiliate CTA, appears after a completed try-on.
+        // Hidden until we have a try-on id + garment id to attribute the
+        // click to. Styled as an outline button below the two main CTAs.
+        '<div class="tryon-buy-wrap" id="tryon-buy-wrap" style="display:none;margin-top:10px">' +
+          '<a class="tryon-action-btn tryon-action-buy" id="tryon-buy-link" href="#" target="_blank" rel="noopener noreferrer">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>' +
+            '<span id="tryon-buy-label">Buy this</span>' +
+          '</a>' +
+          '<div class="tryon-buy-disclosure" id="tryon-buy-disclosure" style="display:none"></div>' +
+        '</div>' +
+      '</div>' +
+      // ── Combo Studio: stage up to one top + one bottom across tabs ──
+      '<div class="tryon-sidebar-section tryon-combo-section">' +
+        '<div class="tryon-section-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l6 6M9 3L3 9"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg><span>Combo Studio</span><span class="tryon-combo-badge">New</span></div>' +
+        '<div class="tryon-combo-hint">Add a top from one site + a bottom from another. We\'ll stitch them onto you in one shot.</div>' +
+        '<div class="tryon-combo-slots">' +
+          '<div class="tryon-combo-slot" id="tryon-combo-slot-top" data-slot="top">' +
+            '<div class="tryon-combo-slot-label">Top</div>' +
+            '<div class="tryon-combo-slot-body" id="tryon-combo-slot-top-body"><div class="tryon-combo-slot-empty">Empty</div></div>' +
+          '</div>' +
+          '<div class="tryon-combo-slot" id="tryon-combo-slot-bottom" data-slot="bottom">' +
+            '<div class="tryon-combo-slot-label">Bottom</div>' +
+            '<div class="tryon-combo-slot-body" id="tryon-combo-slot-bottom-body"><div class="tryon-combo-slot-empty">Empty</div></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="tryon-combo-actions">' +
+          '<button class="tryon-action-btn tryon-action-primary" id="tryon-combo-try" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg><span id="tryon-combo-try-label">Try combo</span></button>' +
+          '<button class="tryon-action-btn tryon-action-secondary" id="tryon-combo-clear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Clear</span></button>' +
+        '</div>' +
       '</div>' +
       '<div class="tryon-sidebar-section">' +
         '<div class="tryon-section-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><span>Selected Items</span><span class="tryon-item-count" id="tryon-item-count">0</span></div>' +
@@ -802,7 +919,7 @@
       '</div>' +
     '</div>' +
     '<div class="tryon-sidebar-footer">' +
-      '<a class="tryon-footer-link" id="tryon-open-app-link">Open ALTER.ai</a>' +
+      '<a class="tryon-footer-link" id="tryon-open-app-link">Open GradFiT</a>' +
       '<span class="tryon-footer-divider">\u00B7</span>' +
       '<span class="tryon-footer-powered">Powered by AI</span>' +
     '</div>';
@@ -818,7 +935,9 @@
       var g = sidebarState.selectedGarments[sidebarState.selectedGarments.length - 1];
       var url = CONFIG.appUrl + '/try?image=' + encodeURIComponent(g.imageUrl);
       if (g.title) url += '&title=' + encodeURIComponent(g.title);
-      try { chrome.runtime.sendMessage({ action: 'tryOnProduct', metadata: g, timestamp: Date.now() }); } catch(e) { window.open(url, '_blank'); }
+      if (!safeSendMessage({ action: 'tryOnProduct', metadata: g, timestamp: Date.now() })) {
+        window.open(url, '_blank');
+      }
       showToast('Opening full try-on...', 'success');
     });
 
@@ -834,9 +953,33 @@
       e.preventDefault();
       window.open(CONFIG.appUrl, '_blank');
     });
+
+    var comboTryBtn = document.getElementById('tryon-combo-try');
+    if (comboTryBtn) comboTryBtn.addEventListener('click', fireComboTryOn);
+
+    var comboClearBtn = document.getElementById('tryon-combo-clear');
+    if (comboClearBtn) comboClearBtn.addEventListener('click', function() {
+      clearComboSlot(null);
+      hideSidebarBuyLink();
+    });
+
+    var buyLink = document.getElementById('tryon-buy-link');
+    if (buyLink) buyLink.addEventListener('click', function(e) {
+      if (buyLink.getAttribute('data-ready') === 'true') return;
+      // If the affiliate resolve never finished, fall back to the raw
+      // retailer URL so the user isn't stuck.
+      if (!quickTryContext || !quickTryContext.sourceUrl) return;
+      e.preventDefault();
+      window.open(quickTryContext.sourceUrl, '_blank');
+    });
+
+    // Hydrate combo slots from storage (may be populated by a prior
+    // session on another tab/site).
+    loadComboState();
   }
 
   function toggleSidebar() {
+    if (!sidebarEl) createSidebar();
     if (sidebarState.open) closeSidebar(); else {
       applySidebarTheme(true);
       sidebarState.open = true;
@@ -931,11 +1074,32 @@
       var item = document.createElement('div');
       item.className = 'tryon-garment-item';
       item.dataset.imageUrl = g.imageUrl;
+      // Per-item "Add to combo" chooser. We default the slot based on
+      // the detected category (`normalizeCategory` on title/brand) but
+      // still let the user override via the dedicated Top/Bottom
+      // buttons -- retailers sometimes mislabel their pages.
+      var guessed = normalizeCategory((g.title || '') + ' ' + (g.brand || ''));
+      var comboButtons =
+        '<div class="tryon-combo-add-buttons">' +
+          '<button class="tryon-combo-add-btn" data-slot="top" data-image="' + escapeAttr(g.imageUrl) + '">' +
+            (guessed === 'top' ? '+ Top \u2605' : '+ Top') +
+          '</button>' +
+          '<button class="tryon-combo-add-btn" data-slot="bottom" data-image="' + escapeAttr(g.imageUrl) + '">' +
+            (guessed === 'bottom' ? '+ Bottom \u2605' : '+ Bottom') +
+          '</button>' +
+        '</div>';
       item.innerHTML = '<img class="tryon-garment-thumb" src="' + escapeAttr(g.imageUrl) + '" alt="' + escapeAttr(g.title || 'Garment') + '" onerror="this.style.display=\'none\'">' +
         '<div class="tryon-garment-info"><div class="tryon-garment-name">' + escapeHtml(g.title || 'Untitled Garment') + '</div>' +
-        '<div class="tryon-garment-meta">' + escapeHtml(g.price || '') + (g.brand ? ' \u00B7 ' + escapeHtml(g.brand) : '') + '</div>' + previewTag + '</div>' +
+        '<div class="tryon-garment-meta">' + escapeHtml(g.price || '') + (g.brand ? ' \u00B7 ' + escapeHtml(g.brand) : '') + '</div>' + previewTag + comboButtons + '</div>' +
         '<button class="tryon-garment-remove" title="Remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
       item.addEventListener('click', function(e) {
+        var comboBtn = e.target.closest('.tryon-combo-add-btn');
+        if (comboBtn) {
+          e.stopPropagation();
+          var slot = comboBtn.getAttribute('data-slot');
+          addToComboSlot(slot, g);
+          return;
+        }
         if (e.target.closest('.tryon-garment-remove')) { removeGarmentFromSidebar(g.imageUrl); return; }
         selectGarmentInSidebar(g.imageUrl);
       });
@@ -948,6 +1112,306 @@
   function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   function escapeAttr(s) { return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
+  // ─── Combo Studio ─────────────────────────────────────────
+  // Combo state is persisted in chrome.storage.local so the user can
+  // stage a top on Zara, open H&M in another tab, and still see the
+  // first item populated in the Combo Studio slot. We listen to
+  // storage changes below so updates sync across tabs instantly.
+  function loadComboState() {
+    safeStorageGet(COMBO_STORAGE_KEY, function(result) {
+      var raw = (result && result[COMBO_STORAGE_KEY]) || null;
+      if (raw && typeof raw === 'object') {
+        comboState.top = raw.top || null;
+        comboState.bottom = raw.bottom || null;
+      }
+      renderComboSlots();
+    });
+  }
+
+  function saveComboState() {
+    var payload = {};
+    payload[COMBO_STORAGE_KEY] = {
+      top: comboState.top,
+      bottom: comboState.bottom,
+      updatedAt: Date.now(),
+    };
+    safeStorageSet(payload);
+  }
+
+  function addToComboSlot(slot, garment) {
+    if (!slot || (slot !== 'top' && slot !== 'bottom')) return;
+    if (!garment || !garment.imageUrl) return;
+
+    var entry = {
+      imageUrl: garment.imageUrl,
+      title: (garment.title || 'Garment').slice(0, 80),
+      sourceUrl: garment.sourceUrl || garment.url || window.location.href,
+      category: slot,
+      brand: garment.brand || '',
+      addedAt: Date.now(),
+      registering: true,
+    };
+    comboState[slot] = entry;
+    saveComboState();
+    renderComboSlots();
+    showToast('Added to combo \u00B7 registering...', 'info');
+
+    // Register with the backend so we have a stable garment_id. The
+    // combo fire-path can register inline later if this fails, but
+    // pre-registering up front makes the final "Try combo" click
+    // near-instant (only the try-on RTT, no upload).
+    safeSendMessage(
+      {
+        action: 'registerGarment',
+        metadata: {
+          imageUrl: entry.imageUrl,
+          title: entry.title,
+          url: entry.sourceUrl,
+          category: slot,
+        },
+      },
+      function(resp) {
+        var current = comboState[slot];
+        if (!current || current.imageUrl !== entry.imageUrl) return;
+        if (resp && resp.success && resp.garmentId) {
+          current.garmentId = resp.garmentId;
+          current.registering = false;
+          saveComboState();
+          renderComboSlots();
+        } else {
+          current.registering = false;
+          current.registerError = (resp && resp.error) || 'Could not register';
+          saveComboState();
+          renderComboSlots();
+        }
+      }
+    );
+  }
+
+  function clearComboSlot(slot) {
+    if (slot === 'top' || slot === 'bottom') {
+      comboState[slot] = null;
+    } else {
+      comboState.top = null;
+      comboState.bottom = null;
+    }
+    saveComboState();
+    renderComboSlots();
+  }
+
+  function renderComboSlots() {
+    ['top', 'bottom'].forEach(function(slot) {
+      var body = document.getElementById('tryon-combo-slot-' + slot + '-body');
+      var slotEl = document.getElementById('tryon-combo-slot-' + slot);
+      var item = comboState[slot];
+      if (!body || !slotEl) return;
+      if (!item) {
+        slotEl.classList.remove('filled');
+        body.innerHTML = '<div class="tryon-combo-slot-empty">Empty</div>';
+        return;
+      }
+      slotEl.classList.add('filled');
+      var host = '';
+      try { host = new URL(item.sourceUrl || '').hostname.replace(/^www\./, ''); } catch (_e) {}
+      var statusLabel = item.registering
+        ? 'Registering...'
+        : (item.garmentId ? (host || 'Ready') : (item.registerError || 'Ready (no id)'));
+      body.innerHTML =
+        '<div class="tryon-combo-item">' +
+          '<img class="tryon-combo-item-thumb" src="' + escapeAttr(item.imageUrl) + '" alt="" onerror="this.style.display=\'none\'">' +
+          '<div class="tryon-combo-item-info">' +
+            '<div class="tryon-combo-item-name">' + escapeHtml(item.title || 'Garment') + '</div>' +
+            '<div class="tryon-combo-item-src">' + escapeHtml(statusLabel) + '</div>' +
+          '</div>' +
+          '<button class="tryon-combo-item-remove" data-slot="' + slot + '" title="Remove">\u00D7</button>' +
+        '</div>';
+      var rm = body.querySelector('.tryon-combo-item-remove');
+      if (rm) rm.addEventListener('click', function(e) {
+        e.stopPropagation();
+        clearComboSlot(slot);
+      });
+    });
+    updateComboActions();
+  }
+
+  function updateComboActions() {
+    var tryBtn = document.getElementById('tryon-combo-try');
+    var label = document.getElementById('tryon-combo-try-label');
+    var hasTop = !!comboState.top;
+    var hasBottom = !!comboState.bottom;
+    var count = (hasTop ? 1 : 0) + (hasBottom ? 1 : 0);
+    if (tryBtn) tryBtn.disabled = count < 2 || comboState.running;
+    if (label) {
+      if (comboState.running) label.textContent = 'Stitching...';
+      else if (count < 2) label.textContent = 'Add top + bottom';
+      else label.textContent = 'Try combo';
+    }
+  }
+
+  function fireComboTryOn() {
+    if (comboState.running) return;
+    if (!comboState.top || !comboState.bottom) {
+      showToast('Add both a Top and a Bottom first.', 'error');
+      return;
+    }
+
+    // Order: apply Bottom first, then Top. Fashn applies each garment
+    // as an overlay, so the last one applied sits on top. Pants under
+    // a shirt looks right; shirt under pants would clip weirdly.
+    var payload = [
+      {
+        garmentId: comboState.bottom.garmentId,
+        imageUrl: comboState.bottom.imageUrl,
+        title: comboState.bottom.title,
+        url: comboState.bottom.sourceUrl,
+        category: 'bottom',
+      },
+      {
+        garmentId: comboState.top.garmentId,
+        imageUrl: comboState.top.imageUrl,
+        title: comboState.top.title,
+        url: comboState.top.sourceUrl,
+        category: 'top',
+      },
+    ];
+
+    comboState.running = true;
+    updateComboActions();
+    setPreviewLoading(true);
+    showToast('Stitching your combo look... this takes ~30-90s', 'info');
+
+    safeSendMessage(
+      {
+        action: 'comboTryOn',
+        metadata: { garments: payload, quality: 'fast' },
+      },
+      function(resp) {
+        comboState.running = false;
+        setPreviewLoading(false);
+        updateComboActions();
+        if (!resp || !resp.success) {
+          var reason = (resp && resp.error) || 'Combo try-on failed';
+          showToast(reason, 'error');
+          return;
+        }
+        showToast('Combo ready \u2728', 'success');
+        comboState.tryOn = {
+          resultUrl: resp.resultUrl,
+          tryonId: resp.tryonId,
+          primaryGarmentId: resp.primaryGarmentId || (resp.garmentIds && resp.garmentIds[0]),
+        };
+        // Render the combo result directly in the preview frame.
+        var imgEl = document.getElementById('tryon-model-img');
+        var placeholder = document.getElementById('tryon-model-placeholder');
+        if (placeholder) placeholder.style.display = 'none';
+        if (imgEl) { imgEl.src = resp.resultUrl; imgEl.style.display = 'block'; }
+        // Point the Buy-this CTA at the primary garment in the combo
+        // (usually the bottom, since we apply it first). The affiliate
+        // service still honours per-garment source_url, so the CTA
+        // resolves to the right retailer.
+        quickTryContext = {
+          tryonId: resp.tryonId,
+          garmentId: resp.primaryGarmentId || (resp.garmentIds && resp.garmentIds[0]),
+          sourceUrl: comboState.bottom && comboState.bottom.sourceUrl,
+        };
+        mountSidebarBuyLink();
+      }
+    );
+  }
+
+  // ─── Sidebar Buy-this CTA ─────────────────────────────────
+  function hideSidebarBuyLink() {
+    var wrap = document.getElementById('tryon-buy-wrap');
+    var link = document.getElementById('tryon-buy-link');
+    var disc = document.getElementById('tryon-buy-disclosure');
+    if (wrap) wrap.style.display = 'none';
+    if (link) { link.href = '#'; link.removeAttribute('data-ready'); }
+    if (disc) disc.style.display = 'none';
+  }
+
+  function mountSidebarBuyLink() {
+    var wrap = document.getElementById('tryon-buy-wrap');
+    var link = document.getElementById('tryon-buy-link');
+    var label = document.getElementById('tryon-buy-label');
+    var disc = document.getElementById('tryon-buy-disclosure');
+    if (!wrap || !link || !label) return;
+    if (!quickTryContext) return;
+    if (!quickTryContext.garmentId && !quickTryContext.sourceUrl) return;
+
+    // Show the button in a "Resolving..." state immediately so users
+    // get feedback even if the affiliate network lookup is slow.
+    wrap.style.display = 'flex';
+    label.textContent = 'Resolving best price...';
+    link.setAttribute('href', quickTryContext.sourceUrl || '#');
+
+    safeStorageGet('tryon_user_token', function(stored) {
+      var token = stored && stored.tryon_user_token;
+      if (!token) {
+        label.textContent = 'Open product page';
+        link.setAttribute('href', quickTryContext.sourceUrl || '#');
+        return;
+      }
+      var body = {
+        garment_id: quickTryContext.garmentId || undefined,
+        tryon_id: quickTryContext.tryonId || undefined,
+        url: quickTryContext.garmentId ? undefined : quickTryContext.sourceUrl || undefined,
+      };
+      fetch(GRADFIT_API_URL + '/api/affiliate/click', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token,
+        },
+        body: JSON.stringify(body),
+      })
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function(resp) {
+        var linkData = (resp && resp.link) || {};
+        if (!linkData.affiliate_url) {
+          label.textContent = 'Open product page';
+          link.setAttribute('href', quickTryContext.sourceUrl || '#');
+          return;
+        }
+        var merchant = linkData.merchant ? ' on ' + linkData.merchant : '';
+        label.textContent = 'Buy this' + merchant;
+        link.setAttribute('href', linkData.affiliate_url);
+        link.setAttribute('data-ready', 'true');
+        if (linkData.disclosure_text && disc) {
+          disc.textContent = linkData.disclosure_text;
+          disc.style.display = 'block';
+        }
+      })
+      .catch(function(err) {
+        console.warn('[GradFiT] affiliate resolve failed:', err);
+        label.textContent = 'Open product page';
+        link.setAttribute('href', quickTryContext.sourceUrl || '#');
+      });
+    });
+  }
+
+  // Shared API origin -- kept in sync with gradfit-floating.js.
+  var GRADFIT_API_URL = 'http://localhost:8000';
+
+  // Cross-tab combo sync: when the user adds a garment from one tab,
+  // every other open tab's sidebar should update immediately. We
+  // listen to chrome.storage.onChanged specifically on the combo
+  // storage key. `contextInvalidated` + isExtensionContextValid()
+  // protect us from runtime-invalidated listeners throwing.
+  if (isExtensionContextValid()) {
+    try {
+      chrome.storage.onChanged.addListener(function(changes, area) {
+        if (area !== 'local') return;
+        if (!changes || !changes[COMBO_STORAGE_KEY]) return;
+        var next = changes[COMBO_STORAGE_KEY].newValue || {};
+        comboState.top = next.top || null;
+        comboState.bottom = next.bottom || null;
+        // Only re-render when the sidebar is actually mounted --
+        // rendering into a non-existent DOM is a no-op but spammy.
+        if (sidebarEl) renderComboSlots();
+      });
+    } catch (_e) { markContextInvalidated(); }
+  }
+
   // ─── Sidebar History ──────────────────────────────────────
   function saveSidebarHistory() {
     try {
@@ -955,18 +1419,16 @@
         sidebarState.history.unshift({ imageUrl: g.imageUrl, quickPreviewUrl: g.quickPreviewUrl || '', title: g.title, price: g.price, brand: g.brand, timestamp: Date.now() });
       });
       if (sidebarState.history.length > CONFIG.maxHistoryItems) sidebarState.history = sidebarState.history.slice(0, CONFIG.maxHistoryItems);
-      try { chrome.storage.local.set({ tryon_sidebar_history: sidebarState.history }); } catch(e) {}
+      safeStorageSet({ tryon_sidebar_history: sidebarState.history });
       renderHistoryList();
     } catch(e) {}
   }
 
   function loadSidebarHistory() {
-    try {
-      chrome.storage.local.get('tryon_sidebar_history', function(result) {
-        sidebarState.history = result.tryon_sidebar_history || [];
-        renderHistoryList();
-      });
-    } catch(e) {}
+    safeStorageGet('tryon_sidebar_history', function(result) {
+      sidebarState.history = (result && result.tryon_sidebar_history) || [];
+      renderHistoryList();
+    });
   }
 
   function renderHistoryList() {
@@ -1039,7 +1501,7 @@
       }
       setTimeout(function() { if (img.complete && img.naturalWidth > 0) createTryOnButton(img); }, 800);
     });
-    console.log('[ALTER.ai] Scanned ' + found.size + ' images, ' + imageOverlays.size + ' garments detected');
+    console.log('[GradFiT] Scanned ' + found.size + ' images, ' + imageOverlays.size + ' garments detected');
   }
 
   function addBgImageOverlay(div, bgUrl) {
@@ -1056,8 +1518,8 @@
     button.addEventListener('click', function(e) {
       e.preventDefault(); e.stopPropagation();
       var md = { imageUrl: bgUrl, title: '', price: '', brand: '', url: window.location.href };
-      try { chrome.runtime.sendMessage({ action: 'tryOnProduct', metadata: md, timestamp: Date.now() }); } catch(e) {}
-      showToast('Opening ALTER.ai...', 'success');
+      safeSendMessage({ action: 'tryOnProduct', metadata: md, timestamp: Date.now() });
+      showToast('Opening GradFiT...', 'success');
     });
     overlay.appendChild(button);
     var ht = null;
@@ -1149,18 +1611,18 @@
     quickPreviewInFlight.clear();
   }
 
-  function syncAlterAuthToken() {
+  function syncGradfitAuthToken() {
     try {
       var appOrigin = new URL(CONFIG.appUrl).origin;
       if (window.location.origin !== appOrigin) return;
 
       var token = window.localStorage.getItem('auth_token') || '';
       if (token) {
-        chrome.storage.local.set({ tryon_user_token: token });
+        safeStorageSet({ tryon_user_token: token });
       } else {
-        chrome.storage.local.remove('tryon_user_token');
+        safeStorageRemove('tryon_user_token');
       }
-    } catch (e) {
+    } catch (_e) {
       // no-op: this should never interrupt content script behavior
     }
   }
@@ -1168,14 +1630,19 @@
   // ═══════════════════════════════════════════════════════════
   // MESSAGE LISTENER
   // ═══════════════════════════════════════════════════════════
-  try {
-    chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-      if (request.action === 'scanPage') { processImages(); sendResponse({ success: true, count: imageOverlays.size }); }
-      else if (request.action === 'toggleSidebar') { toggleSidebar(); sendResponse({ success: true }); }
-      else if (request.action === 'getDetectedCount') { sendResponse({ success: true, count: imageOverlays.size }); }
-      return true;
-    });
-  } catch(e) {}
+  if (isExtensionContextValid()) {
+    try {
+      chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+        if (!isExtensionContextValid()) { markContextInvalidated(); return false; }
+        if (request.action === 'scanPage') { processImages(); sendResponse({ success: true, count: imageOverlays.size }); }
+        else if (request.action === 'toggleSidebar') { toggleSidebar(); sendResponse({ success: true }); }
+        else if (request.action === 'getDetectedCount') { sendResponse({ success: true, count: imageOverlays.size }); }
+        return true;
+      });
+    } catch (_e) {
+      markContextInvalidated();
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════
   // INITIALIZATION
@@ -1183,12 +1650,15 @@
   function init() {
     if (initDone) return;
     initDone = true;
-    console.log('[ALTER.ai] Content script initializing...');
-    syncAlterAuthToken();
+    console.log('[GradFiT] Content script initializing...');
+    syncGradfitAuthToken();
     processImages();
     setupMutationObserver();
     setupIntersectionObserver();
-    createSidebar();
+    // Sidebar + its toggle are now created lazily - only when the user
+    // actually clicks the quick-preview button on a product image or the
+    // popup sends a toggleSidebar message. This keeps normal browsing
+    // free of always-visible GradFiT chrome.
     window.addEventListener('focus', function() { applySidebarTheme(false); });
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible') applySidebarTheme(false);
@@ -1196,14 +1666,22 @@
     // Re-scan on scroll (for infinite scroll pages)
     var debouncedScan = debounce(processImages, 1000);
     window.addEventListener('scroll', debouncedScan, { passive: true });
-    // Re-scan on URL change (SPA navigation)
+    // Re-scan on URL change (SPA navigation). Also watches for extension
+    // context invalidation (user reloaded extension) and self-terminates
+    // to avoid flooding the console with "Extension context invalidated"
+    // errors on every tick.
     var lastUrl = window.location.href;
-    setInterval(function() {
+    spaCheckInterval = setInterval(function() {
+      if (!isExtensionContextValid()) {
+        markContextInvalidated();
+        return;
+      }
       if (window.location.href !== lastUrl) {
         lastUrl = window.location.href;
-        syncAlterAuthToken();
+        syncGradfitAuthToken();
         cleanup();
         setTimeout(function() {
+          if (!isExtensionContextValid()) return;
           processImages();
           setupMutationObserver();
           setupIntersectionObserver();
@@ -1211,7 +1689,7 @@
         }, 500);
       }
     }, 1000);
-    console.log('[ALTER.ai] Content script ready');
+    console.log('[GradFiT] Content script ready');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });

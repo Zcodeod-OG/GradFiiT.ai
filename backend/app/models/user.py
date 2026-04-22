@@ -22,6 +22,29 @@ class User(Base):
     avatar_metadata = Column(JSON, nullable=True)
     avatar_error_message = Column(Text, nullable=True)
     avatar_updated_at = Column(DateTime(timezone=True), nullable=True)
+    # Persistent canonical "person photo" -- uploaded once, reused across every
+    # try-on surface (web /try, dashboard Quick Try, Chrome extension overlay).
+    # We also cache the smart-crop and CLIP face embedding so the runtime
+    # pipeline can skip the input gate / face crop / face embed roundtrips.
+    default_person_image_url = Column(String, nullable=True)
+    default_person_image_s3_key = Column(String, nullable=True)
+    default_person_smart_crop_url = Column(String, nullable=True)
+    default_person_face_url = Column(String, nullable=True)
+    default_person_face_embedding = Column(JSON, nullable=True)
+    default_person_input_gate_metrics = Column(JSON, nullable=True)
+    default_person_uploaded_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Stripe billing. Populated by the billing webhook once a user finishes
+    # Checkout. `subscription_status` mirrors Stripe's state machine
+    # (active / trialing / past_due / canceled / unpaid / incomplete /
+    # inactive). We keep `subscription_tier` as the single source of truth
+    # for quota enforcement -- it's only flipped by the webhook handler.
+    stripe_customer_id = Column(String, nullable=True, index=True)
+    stripe_subscription_id = Column(String, nullable=True)
+    subscription_status = Column(String, nullable=False, default="inactive")
+    subscription_renews_at = Column(DateTime(timezone=True), nullable=True)
+    subscription_cancel_at_period_end = Column(Boolean, nullable=False, default=False)
+
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -29,4 +52,5 @@ class User(Base):
 
     garments = relationship("Garment", back_populates="user")
     tryons = relationship("TryOn", back_populates="user")
+    affiliate_clicks = relationship("AffiliateClick", back_populates="user")
 

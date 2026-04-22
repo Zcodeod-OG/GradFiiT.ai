@@ -48,10 +48,10 @@ export function Navbar() {
             whileTap={{ scale: 0.95 }}
           >
             <div className="size-9 md:size-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_8px_20px_oklch(0.56_0.13_250/0.28)]">
-              <span className="text-white font-display font-bold text-sm md:text-base">A</span>
+              <span className="text-white font-display font-bold text-sm md:text-base">G</span>
             </div>
             <span className="text-xl md:text-2xl font-display font-bold tracking-tight text-foreground">
-              ALTER.ai
+              GradFiT
             </span>
           </motion.a>
 

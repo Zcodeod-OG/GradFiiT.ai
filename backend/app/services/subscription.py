@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -10,8 +10,19 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.tryon import TryOn
+from app.config import settings
+from app.models.tryon import TryOn, TryOnStatus
 from app.models.user import User
+
+
+# Statuses that should *not* consume the user's quota. Provider / pipeline
+# failures and dead-letters are the system's fault, not the user's intent,
+# so they shouldn't burn their daily / monthly allowance.
+_NON_BILLABLE_STATUSES = (
+    TryOnStatus.FAILED,
+    TryOnStatus.DEAD_LETTER,
+    TryOnStatus.QUALITY_FAILED,
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +33,13 @@ class PlanRule:
     period: str
     limit: Optional[int]
     monthly_price_usd: Optional[float]
+    # `purchasable=False` means the plan is visible on /pricing but the
+    # Checkout button is disabled (used for "coming soon" or enterprise
+    # tiers). `coming_soon=True` shows an explicit badge.
+    purchasable: bool = True
+    coming_soon: bool = False
+    # Short sentence explaining the coming-soon state / sales CTA.
+    cta_note: Optional[str] = None
 
 
 PLAN_RULES: dict[str, PlanRule] = {
@@ -32,6 +50,7 @@ PLAN_RULES: dict[str, PlanRule] = {
         period="day",
         limit=4,
         monthly_price_usd=0.0,
+        purchasable=True,  # default tier on signup; no Checkout needed
     ),
     "free_3d": PlanRule(
         code="free_3d",
@@ -40,6 +59,9 @@ PLAN_RULES: dict[str, PlanRule] = {
         period="day",
         limit=2,
         monthly_price_usd=0.0,
+        purchasable=False,
+        coming_soon=True,
+        cta_note="3D try-on is launching soon. Join the waitlist from your dashboard.",
     ),
     "premium_2d": PlanRule(
         code="premium_2d",
@@ -48,6 +70,7 @@ PLAN_RULES: dict[str, PlanRule] = {
         period="month",
         limit=195,
         monthly_price_usd=3.99,
+        purchasable=True,
     ),
     "premium_3d": PlanRule(
         code="premium_3d",
@@ -56,6 +79,9 @@ PLAN_RULES: dict[str, PlanRule] = {
         period="month",
         limit=180,
         monthly_price_usd=5.99,
+        purchasable=False,
+        coming_soon=True,
+        cta_note="3D try-on is launching soon. Join the waitlist from your dashboard.",
     ),
     "ultra": PlanRule(
         code="ultra",
@@ -64,6 +90,9 @@ PLAN_RULES: dict[str, PlanRule] = {
         period="month",
         limit=365,
         monthly_price_usd=15.99,
+        purchasable=False,
+        coming_soon=True,
+        cta_note="Ultra unlocks when 3D ships. We'll email everyone on the waitlist.",
     ),
     "business": PlanRule(
         code="business",
@@ -72,8 +101,36 @@ PLAN_RULES: dict[str, PlanRule] = {
         period="none",
         limit=None,
         monthly_price_usd=None,
+        purchasable=False,
+        coming_soon=False,
+        cta_note="Talk to our team for SLA, team seats, and custom integrations.",
     ),
 }
+
+
+# Map our internal plan codes to the Stripe Price IDs configured in env.
+# Stripe Price IDs live in `settings` so we can have separate test vs.
+# production values without touching code.
+def get_stripe_price_id(plan_code: str) -> Optional[str]:
+    mapping = {
+        "premium_2d": getattr(settings, "STRIPE_PRICE_PREMIUM_2D", None),
+        "premium_3d": getattr(settings, "STRIPE_PRICE_PREMIUM_3D", None),
+        "ultra": getattr(settings, "STRIPE_PRICE_ULTRA", None),
+    }
+    price_id = mapping.get(plan_code)
+    return price_id.strip() if price_id and price_id.strip() else None
+
+
+def tier_from_stripe_price_id(price_id: str) -> Optional[str]:
+    """Reverse lookup used by the Stripe webhook to translate an incoming
+    subscription event back to a tier code."""
+    if not price_id:
+        return None
+    for plan_code in ("premium_2d", "premium_3d", "ultra"):
+        mapped = get_stripe_price_id(plan_code)
+        if mapped and mapped == price_id:
+            return plan_code
+    return None
 
 
 def _normalize_mode(value: str | None) -> str:
@@ -115,7 +172,11 @@ def get_usage_snapshot(db: Session, user: User, requested_mode: str) -> dict:
             "mode": mode,
         }
 
-    query = db.query(func.count(TryOn.id)).filter(TryOn.user_id == user.id)
+    query = (
+        db.query(func.count(TryOn.id))
+        .filter(TryOn.user_id == user.id)
+        .filter(TryOn.status.notin_(_NON_BILLABLE_STATUSES))
+    )
     if period_start is not None:
         query = query.filter(TryOn.created_at >= period_start)
 
@@ -165,14 +226,23 @@ def enforce_tryon_quota(db: Session, user: User, requested_mode: str) -> dict:
 
 
 def list_plan_catalog() -> list[dict]:
-    return [
-        {
-            "code": plan.code,
-            "display_name": plan.display_name,
-            "allowed_modes": list(plan.allowed_modes),
-            "period": plan.period,
-            "limit": plan.limit,
-            "monthly_price_usd": plan.monthly_price_usd,
-        }
-        for plan in PLAN_RULES.values()
-    ]
+    catalog: list[dict] = []
+    for plan in PLAN_RULES.values():
+        catalog.append(
+            {
+                "code": plan.code,
+                "display_name": plan.display_name,
+                "allowed_modes": list(plan.allowed_modes),
+                "period": plan.period,
+                "limit": plan.limit,
+                "monthly_price_usd": plan.monthly_price_usd,
+                "purchasable": plan.purchasable,
+                "coming_soon": plan.coming_soon,
+                "cta_note": plan.cta_note,
+                # Surface the Stripe Price ID (or None) so the UI can show
+                # a disabled Checkout button when Stripe is unconfigured,
+                # without exposing secrets.
+                "stripe_price_configured": bool(get_stripe_price_id(plan.code)),
+            }
+        )
+    return catalog

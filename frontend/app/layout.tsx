@@ -18,8 +18,8 @@ const spaceGrotesk = Space_Grotesk({
 })
 
 export const metadata: Metadata = {
-  title: "ALTER.ai",
-  description: "AI Virtual Try-On",
+  title: "GradFiT - Graduate your fit.",
+  description: "Wear it before you buy it. Upload one photo, try any outfit from any store on the internet.",
 }
 
 export default function RootLayout({

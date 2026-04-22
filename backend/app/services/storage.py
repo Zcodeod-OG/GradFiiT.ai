@@ -124,7 +124,40 @@ class StorageService:
             return url
 
 
-_storage_service = None
+# ── Backwards-compatible aliases ───────────────────────────────
+# Older modules (and the package __init__) import the storage service as
+# `S3Storage` along with a small hierarchy of `S3*Error` exception classes.
+# Keep those names available so the FastAPI app can import cleanly even
+# while the codebase converges on `StorageService`.
+
+S3Storage = StorageService
+
+
+class S3StorageError(Exception):
+    """Base class for S3 storage related errors."""
+
+
+class S3UploadError(S3StorageError):
+    """Raised when an S3 upload fails."""
+
+
+class S3DownloadError(S3StorageError):
+    """Raised when an S3 download fails."""
+
+
+class S3DeleteError(S3StorageError):
+    """Raised when an S3 delete fails."""
+
+
+class S3NotFoundError(S3StorageError):
+    """Raised when the requested S3 object cannot be found."""
+
+
+class S3PermissionError(S3StorageError):
+    """Raised when S3 denies access to the requested operation."""
+
+
+_storage_service: Optional[StorageService] = None
 
 
 def get_storage() -> StorageService:
@@ -132,4 +165,17 @@ def get_storage() -> StorageService:
     if _storage_service is None:
         _storage_service = StorageService()
     return _storage_service
+
+
+__all__ = [
+    "StorageService",
+    "S3Storage",
+    "S3StorageError",
+    "S3UploadError",
+    "S3DownloadError",
+    "S3DeleteError",
+    "S3NotFoundError",
+    "S3PermissionError",
+    "get_storage",
+]
 

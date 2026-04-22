@@ -1,5 +1,5 @@
 """
-ALTER.AI - Cache Service
+GradFiT - Cache Service
 
 Provides a small cache abstraction for pipeline artifacts.
 Uses Redis when available and falls back to in-process memory.

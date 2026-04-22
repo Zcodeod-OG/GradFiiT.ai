@@ -15,6 +15,13 @@ export type PlanCard = {
   cadence: string
   description: string
   featured?: boolean
+  comingSoon?: boolean
+  // When false, the pricing CTA is disabled and replaced by a "Coming
+  // soon" / "Contact sales" label. Source of truth is the backend
+  // (`/api/billing/plans` -> `purchasable`); this mirror keeps the
+  // marketing section renderable without a round-trip.
+  purchasable?: boolean
+  ctaNote?: string
   features: string[]
 }
 
@@ -25,23 +32,11 @@ export const PLAN_CARDS: PlanCard[] = [
     priceLabel: "$0",
     cadence: "/month",
     description: "Start with 2D try-ons",
+    purchasable: true,
     features: [
       "4 try-ons per day",
       "2D virtual try-on",
       "Standard queue",
-      "Basic support",
-    ],
-  },
-  {
-    code: "free_3d",
-    name: "Free 3D Tier",
-    priceLabel: "$0",
-    cadence: "/month",
-    description: "Try the 3D mannequin workflow",
-    features: [
-      "2 try-ons per day",
-      "3D mannequin generation",
-      "360 viewer access",
       "Basic support",
     ],
   },
@@ -52,6 +47,7 @@ export const PLAN_CARDS: PlanCard[] = [
     cadence: "/month",
     description: "High-volume 2D workflows",
     featured: true,
+    purchasable: true,
     features: [
       "195 try-ons per month",
       "Priority queue",
@@ -65,6 +61,9 @@ export const PLAN_CARDS: PlanCard[] = [
     priceLabel: "$5.99",
     cadence: "/month",
     description: "Production-grade 3D fitting",
+    comingSoon: true,
+    purchasable: false,
+    ctaNote: "Launching soon",
     features: [
       "180 try-ons per month",
       "3D garment fitting",
@@ -78,6 +77,9 @@ export const PLAN_CARDS: PlanCard[] = [
     priceLabel: "$15.99",
     cadence: "/month",
     description: "Both 2D and 3D in one bucket",
+    comingSoon: true,
+    purchasable: false,
+    ctaNote: "Launching with 3D",
     features: [
       "365 try-ons per month",
       "Includes both 2D and 3D",
@@ -91,6 +93,8 @@ export const PLAN_CARDS: PlanCard[] = [
     priceLabel: "Custom",
     cadence: "",
     description: "For brands and large teams",
+    purchasable: false,
+    ctaNote: "Contact sales",
     features: [
       "Contact sales team",
       "SLA and dedicated onboarding",

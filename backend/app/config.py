@@ -165,7 +165,186 @@ class Settings(BaseSettings):
         default="upperbody",
         description="Default garment category sent to OOTDiffusion (upperbody, lowerbody, dress)"
     )
-    
+
+    # ==================== Try-On Provider Selection ====================
+
+    TRYON_PROVIDER: str = Field(
+        default="fashn",
+        description="Active try-on provider. One of: fashn, replicate_legacy"
+    )
+
+    TRYON_OUTPUT_RESOLUTION: str = Field(
+        default="1024",
+        description="Default output resolution for single-call providers"
+    )
+
+    TRYON_OUTPUT_FORMAT: str = Field(
+        default="png",
+        description="Default output format for single-call providers (png|jpeg)"
+    )
+
+    # ==================== Fashn.ai Provider ====================
+
+    FASHN_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Fashn.ai API key for the commercial VTON provider"
+    )
+
+    FASHN_BASE_URL: str = Field(
+        default="https://api.fashn.ai/v1",
+        description="Base URL for the Fashn.ai REST API"
+    )
+
+    FASHN_HTTP_TIMEOUT_SECONDS: int = Field(
+        default=60,
+        description="HTTP timeout for individual Fashn API calls"
+    )
+
+    FASHN_POLL_INTERVAL_SECONDS: float = Field(
+        default=1.5,
+        description="Polling interval (seconds) when waiting for Fashn predictions"
+    )
+
+    FASHN_MAX_WAIT_SECONDS: int = Field(
+        default=180,
+        description="Maximum wall-clock wait for a Fashn prediction to finish"
+    )
+
+    FASHN_WEBHOOK_URL: Optional[str] = Field(
+        default=None,
+        description="Public webhook base for Fashn callbacks (e.g. https://api.example.com/api/webhooks/fashn)"
+    )
+
+    FASHN_DEFAULT_MODEL: str = Field(
+        default="tryon-v1.6",
+        description="Default Fashn model name for fast/balanced lanes"
+    )
+
+    FASHN_BEST_MODEL: str = Field(
+        default="tryon-max",
+        description="Fashn model name for the best-quality lane"
+    )
+
+    FASHN_BEST_NUM_SAMPLES: int = Field(
+        default=2,
+        description="Number of samples to draw on the best lane (we pick the best via CLIP)"
+    )
+
+    FASHN_BALANCED_NUM_SAMPLES: int = Field(
+        default=2,
+        description="Number of samples to draw on the balanced lane (postprocessor picks the best)"
+    )
+
+    # ==================== Try-On Quality Layers (L1 input gate + L2 postprocess) ====================
+    # All toggles are best-effort: any failure in a step logs a warning and the
+    # pipeline falls through to the previous stage's output. The user always
+    # gets *something*. Hard failure only happens on INPUT_GATE_HARD_FAIL=true.
+
+    TRYON_POSTPROCESS_ENABLED: bool = Field(
+        default=True,
+        description="Master switch for the Layer 2 post-processing stack (Fashn provider only)"
+    )
+
+    POSTPROCESS_LANES: str = Field(
+        default="balanced,best",
+        description="Comma-separated list of quality lanes that get post-processing (fast lane stays raw for latency)"
+    )
+
+    INPUT_GATE_ENABLED: bool = Field(
+        default=True,
+        description="Run Layer 1 input quality gate before sending to the provider"
+    )
+
+    INPUT_GATE_HARD_FAIL: bool = Field(
+        default=False,
+        description="If true, reject the try-on with a user-facing error when the gate fails. If false, log only."
+    )
+
+    INPUT_GATE_MIN_BLUR_VAR: float = Field(
+        default=80.0,
+        description="Minimum Laplacian variance for the person image (lower = blurrier). 0 disables the check."
+    )
+
+    INPUT_GATE_MIN_BODY_COVERAGE: float = Field(
+        default=0.55,
+        description="Minimum fraction of YOLO11-pose keypoints that must be visible (0..1)"
+    )
+
+    INPUT_GATE_SMART_CROP: bool = Field(
+        default=True,
+        description="When pose detection finds a clear person bbox, tightly crop around it before sending to the provider"
+    )
+
+    INPUT_GATE_SMART_CROP_PADDING: float = Field(
+        default=0.08,
+        description="Padding fraction added around the detected person bbox for the smart crop (0.08 = 8 percent)"
+    )
+
+    BG_ISOLATE_ENABLED: bool = Field(
+        default=False,
+        description="Layer 1: rembg-based person isolation on a neutral background before VTON (extra latency, opt-in)"
+    )
+
+    BG_COMPOSE_ENABLED: bool = Field(
+        default=False,
+        description="Layer 2: composite the VTON result back onto the original person background (requires BG_ISOLATE_ENABLED)"
+    )
+
+    IDENTITY_CHECK_ENABLED: bool = Field(
+        default=True,
+        description="Layer 2: compare CLIP face embedding of input vs output to detect identity drift"
+    )
+
+    IDENTITY_DRIFT_THRESHOLD: float = Field(
+        default=0.78,
+        description="Minimum acceptable face cosine similarity (CLIP). Below this we consider the identity drifted."
+    )
+
+    IDENTITY_RETRY_MAX: int = Field(
+        default=1,
+        description="Maximum number of provider retries with a fresh seed when identity drift is detected"
+    )
+
+    FACE_RESTORE_ENABLED: bool = Field(
+        default=True,
+        description="Layer 2: GFPGAN face restoration on the VTON output (Apache 2.0)"
+    )
+
+    FACE_RESTORE_MODEL: str = Field(
+        default="tencentarc/gfpgan",
+        description="Replicate slug (or slug:version) for GFPGAN face restoration"
+    )
+
+    FACE_RESTORE_SCALE: int = Field(
+        default=2,
+        description="Upscale factor passed to GFPGAN (1, 2, or 4)"
+    )
+
+    UPSCALE_ENABLED: bool = Field(
+        default=True,
+        description="Layer 2: Real-ESRGAN super-resolution on the VTON output (BSD-3)"
+    )
+
+    UPSCALE_MODEL: str = Field(
+        default="nightmareai/real-esrgan",
+        description="Replicate slug (or slug:version) for Real-ESRGAN"
+    )
+
+    UPSCALE_FACTOR: int = Field(
+        default=2,
+        description="Upscale factor for Real-ESRGAN (2 or 4). Skipped when GFPGAN already upscaled to the target."
+    )
+
+    UPSCALE_FACE_ENHANCE: bool = Field(
+        default=False,
+        description="Tell Real-ESRGAN to also run face enhance. Default off because GFPGAN already handled faces."
+    )
+
+    POSTPROCESS_HTTP_TIMEOUT_SECONDS: int = Field(
+        default=60,
+        description="HTTP timeout for downloading/uploading post-processed artifacts"
+    )
+
     # ==================== Celery Settings ====================
     
     CELERY_BROKER_URL: str = Field(
@@ -196,6 +375,41 @@ class Settings(BaseSettings):
     TRYON_HARD_TIME_LIMIT_SECONDS: int = Field(
         default=300,
         description="Hard Celery time limit for try-on tasks"
+    )
+
+    TRYON_STAGE0_TIMEOUT_SECONDS: int = Field(
+        default=90,
+        description="Timeout for garment extraction stage (seconds)"
+    )
+
+    TRYON_STAGE1_TIMEOUT_SECONDS: int = Field(
+        default=210,
+        description="Timeout for stage-1 try-on generation (seconds)"
+    )
+
+    TRYON_STAGE2_TIMEOUT_SECONDS: int = Field(
+        default=75,
+        description="Timeout for quality gate stage (seconds)"
+    )
+
+    TRYON_STAGE3_TIMEOUT_SECONDS: int = Field(
+        default=150,
+        description="Timeout for quality refinement stage (seconds)"
+    )
+
+    TRYON_STAGE4_TIMEOUT_SECONDS: int = Field(
+        default=75,
+        description="Timeout for final rating stage (seconds)"
+    )
+
+    TRYON_ENABLE_REFINEMENT: bool = Field(
+        default=True,
+        description="Enable heavy quality refinement stage"
+    )
+
+    TRYON_ENABLE_RATING: bool = Field(
+        default=False,
+        description="Enable final quality rating stage"
     )
 
     ENABLE_CELERY_GARMENT_PREPROCESS: bool = Field(
@@ -321,7 +535,77 @@ class Settings(BaseSettings):
         default=None,
         description="Stripe webhook signing secret"
     )
-    
+
+    # Stripe Price IDs per plan. Leave blank for plans that are not yet
+    # purchasable (coming-soon tiers). When a Price ID is not set the
+    # /api/billing/checkout-session endpoint returns 503 for that plan.
+    STRIPE_PRICE_PREMIUM_2D: Optional[str] = Field(
+        default=None,
+        description="Stripe Price ID for the Premium 2D subscription ($3.99/mo)"
+    )
+
+    STRIPE_PRICE_PREMIUM_3D: Optional[str] = Field(
+        default=None,
+        description="Stripe Price ID for the Premium 3D subscription (launching later)"
+    )
+
+    STRIPE_PRICE_ULTRA: Optional[str] = Field(
+        default=None,
+        description="Stripe Price ID for the Ultra subscription (launching later)"
+    )
+
+    STRIPE_SUCCESS_URL: str = Field(
+        default="http://localhost:3000/billing/success?session_id={CHECKOUT_SESSION_ID}",
+        description="Redirect URL after successful Stripe Checkout"
+    )
+
+    STRIPE_CANCEL_URL: str = Field(
+        default="http://localhost:3000/pricing?canceled=1",
+        description="Redirect URL when the user cancels Stripe Checkout"
+    )
+
+    STRIPE_BILLING_PORTAL_RETURN_URL: str = Field(
+        default="http://localhost:3000/account/billing",
+        description="Where Stripe Customer Portal sends the user after they finish"
+    )
+
+    # ==================== Affiliate Settings (Optional) ====================
+
+    AFFILIATE_DISCLOSURE_TEXT: str = Field(
+        default="We may earn a small commission when you buy through this link, at no extra cost to you.",
+        description="FTC-required disclosure shown next to every Buy-this button"
+    )
+
+    AFFILIATE_AMAZON_US_TAG: Optional[str] = Field(
+        default=None,
+        description="Amazon Associates tracking ID for amazon.com (e.g. 'gradfit-20')"
+    )
+
+    AFFILIATE_AMAZON_IN_TAG: Optional[str] = Field(
+        default=None,
+        description="Amazon Associates tracking ID for amazon.in"
+    )
+
+    AFFILIATE_AMAZON_UK_TAG: Optional[str] = Field(
+        default=None,
+        description="Amazon Associates tracking ID for amazon.co.uk"
+    )
+
+    AFFILIATE_EARNKARO_TOKEN: Optional[str] = Field(
+        default=None,
+        description="EarnKaro API token for Myntra/Ajio/Nykaa/Flipkart deep links"
+    )
+
+    AFFILIATE_CUELINKS_CID: Optional[str] = Field(
+        default=None,
+        description="CueLinks customer ID used as a fallback rewriter"
+    )
+
+    AFFILIATE_GENERIC_SUBID: Optional[str] = Field(
+        default="gradfit",
+        description="Sub-ID / SID attached to every outbound affiliate link for attribution"
+    )
+
     # ==================== Sentry Settings (Optional) ====================
     
     SENTRY_DSN: Optional[str] = Field(
@@ -499,6 +783,38 @@ class Settings(BaseSettings):
         if normalized not in allowed:
             raise ValueError(f"THREE_D_ENGINE must be one of {allowed}")
         return normalized
+
+    @field_validator("TRYON_PROVIDER")
+    @classmethod
+    def validate_tryon_provider(cls, v: str) -> str:
+        """Validate try-on provider selection."""
+        normalized = (v or "fashn").strip().lower()
+        allowed = ["fashn", "replicate_legacy"]
+        if normalized not in allowed:
+            raise ValueError(f"TRYON_PROVIDER must be one of {allowed}")
+        return normalized
+
+    @field_validator("TRYON_OUTPUT_FORMAT")
+    @classmethod
+    def validate_output_format(cls, v: str) -> str:
+        normalized = (v or "png").strip().lower()
+        allowed = ["png", "jpeg", "jpg"]
+        if normalized not in allowed:
+            raise ValueError(f"TRYON_OUTPUT_FORMAT must be one of {allowed}")
+        return "jpeg" if normalized == "jpg" else normalized
+
+    @field_validator("POSTPROCESS_LANES")
+    @classmethod
+    def validate_postprocess_lanes(cls, v: str) -> str:
+        raw = (v or "").strip().lower()
+        if not raw:
+            return ""
+        allowed = {"fast", "balanced", "best"}
+        lanes = [token.strip() for token in raw.split(",") if token.strip()]
+        invalid = [lane for lane in lanes if lane not in allowed]
+        if invalid:
+            raise ValueError(f"POSTPROCESS_LANES contains unknown lanes: {invalid}. Allowed: {sorted(allowed)}")
+        return ",".join(lanes)
     
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -563,6 +879,7 @@ class Settings(BaseSettings):
             "CLERK_SECRET_KEY",
             "CLERK_WEBHOOK_SECRET",
             "REPLICATE_API_TOKEN",
+            "FASHN_API_KEY",
             "SMTP_PASSWORD",
             "STRIPE_SECRET_KEY",
             "STRIPE_WEBHOOK_SECRET",

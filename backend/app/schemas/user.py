@@ -17,6 +17,11 @@ class UserBase(BaseModel):
     avatar_metadata: Optional[Dict[str, Any]] = None
     avatar_error_message: Optional[str] = None
     avatar_updated_at: Optional[datetime] = None
+    default_person_image_url: Optional[str] = None
+    default_person_smart_crop_url: Optional[str] = None
+    default_person_face_url: Optional[str] = None
+    default_person_input_gate_metrics: Optional[Dict[str, Any]] = None
+    default_person_uploaded_at: Optional[datetime] = None
     is_active: bool = True
 
 

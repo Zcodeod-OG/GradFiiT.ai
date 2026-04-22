@@ -23,9 +23,15 @@ class Garment(Base):
     preprocess_error = Column(Text, nullable=True)
     saved_to_closet = Column(Boolean, nullable=False, default=True)
 
+    # Original retailer URL the garment was captured from (e.g. the H&M
+    # product page). Passed through from the Chrome extension's Quick Try
+    # flow and used by the affiliate rewriter to build a "Buy this" link.
+    source_url = Column(String, nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     user = relationship("User", back_populates="garments")
     tryons = relationship("TryOn", back_populates="garment")
+    affiliate_clicks = relationship("AffiliateClick", back_populates="garment")
 

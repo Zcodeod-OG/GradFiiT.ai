@@ -1,5 +1,5 @@
 /* ============================================================
-   ALTER.ai Chrome Extension - Overlay & Sidebar Styles
+   GradFiT Chrome Extension - Overlay & Sidebar Styles
    ============================================================ */
 
 :root {
@@ -283,6 +283,177 @@
 .tryon-action-secondary:not(:disabled):hover {
   background: rgba(var(--tryon-accent-rgb), 0.15);
   border-color: rgba(var(--tryon-accent-rgb), 0.42);
+}
+
+/* ─── Buy-this affiliate CTA ──────────────────────────────────
+   Appears in the preview card after a try-on completes. Full-width
+   outline button so it doesn't compete visually with the two
+   primary actions above. */
+.tryon-buy-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tryon-action-buy {
+  width: 100%;
+  justify-content: center;
+  text-decoration: none;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(var(--tryon-accent-2-rgb), 0.18));
+  color: #d1fae5;
+  border: 1px solid rgba(16, 185, 129, 0.42);
+}
+.tryon-action-buy:hover {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.32), rgba(var(--tryon-accent-2-rgb), 0.28));
+  border-color: rgba(16, 185, 129, 0.65);
+}
+.tryon-buy-disclosure {
+  font-size: 10px;
+  color: var(--tryon-soft);
+  line-height: 1.35;
+  padding: 0 2px;
+}
+
+/* ─── Combo Studio ────────────────────────────────────────────
+   Two staged slots (Top / Bottom) that persist in chrome.storage
+   so they survive tab switches, cross-site browsing, and sidebar
+   re-opens. */
+.tryon-combo-section {
+  background: rgba(var(--tryon-accent-rgb), 0.06);
+  border: 1px solid rgba(var(--tryon-accent-rgb), 0.22);
+  border-radius: 12px;
+  padding: 12px;
+}
+.tryon-combo-badge {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--tryon-accent), var(--tryon-accent-2));
+  color: #fff;
+}
+.tryon-combo-hint {
+  font-size: 11px;
+  color: var(--tryon-muted);
+  line-height: 1.45;
+  margin: 6px 0 10px;
+}
+.tryon-combo-slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.tryon-combo-slot {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px dashed rgba(var(--tryon-accent-rgb), 0.3);
+  border-radius: 10px;
+  padding: 8px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.tryon-combo-slot.filled {
+  border-style: solid;
+  border-color: rgba(var(--tryon-accent-rgb), 0.55);
+  background: rgba(var(--tryon-accent-rgb), 0.08);
+}
+.tryon-combo-slot-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: color-mix(in srgb, var(--tryon-accent) 75%, #ffffff 25%);
+}
+.tryon-combo-slot-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tryon-combo-slot-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--tryon-soft);
+}
+.tryon-combo-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.tryon-combo-item-thumb {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
+  flex-shrink: 0;
+}
+.tryon-combo-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tryon-combo-item-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tryon-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tryon-combo-item-src {
+  font-size: 10px;
+  color: var(--tryon-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tryon-combo-item-remove {
+  background: transparent;
+  border: 0;
+  color: var(--tryon-soft);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+.tryon-combo-item-remove:hover {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.15);
+}
+.tryon-combo-add-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.tryon-combo-add-btn {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(var(--tryon-accent-rgb), 0.25);
+  color: color-mix(in srgb, var(--tryon-accent) 65%, #ffffff 35%);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.tryon-combo-add-btn:hover {
+  background: rgba(var(--tryon-accent-rgb), 0.18);
+  border-color: rgba(var(--tryon-accent-rgb), 0.55);
+}
+.tryon-combo-actions {
+  display: grid;
+  grid-template-columns: 1fr 90px;
+  gap: 8px;
 }
 
 /* ─── Garment List ──────────────────────────────────────────── */

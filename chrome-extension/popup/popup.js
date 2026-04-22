@@ -1,551 +1,354 @@
-// Enhanced Popup Script for ALTER.ai Chrome Extension
-// Handles stats, recent try-ons, button actions, and user tier
+/* GradFiT popup script.
+ *
+ * Reads the cached `gradfit_user_snapshot` (written by background.js) and
+ * `gradfit_recent_tryons` (written by content scripts when a try-on starts /
+ * completes). Falls back to live API calls only if the snapshot is missing
+ * so the popup feels instant when opened repeatedly.
+ */
 
-// Configuration
 const CONFIG = {
-  appUrl: 'http://localhost:3000',
-  apiUrl: 'http://localhost:8000',
+  appUrl: "http://localhost:3000",
+  apiUrl: "http://localhost:8000",
   storageKeys: {
-    analytics: 'tryon_analytics',
-    dailyCount: 'tryon_daily_count',
-    tryOnHistory: 'tryon_history',
-    userToken: 'tryon_user_token',
-    userTier: 'tryon_user_tier',
-    userMode: 'tryon_user_mode',
+    userToken: "tryon_user_token",
+    snapshot: "gradfit_user_snapshot",
+    recentTryons: "gradfit_recent_tryons",
   },
-  maxFreeTriesPerDay: 4,
-  maxRecentTryOns: 3, // Show last 3 in popup
+  maxRecent: 6,
 };
 
-// State
-let statsInterval = null;
-let userTier = 'free_2d';
-let userMode = '2d';
-let userQuota = null;
+let snapshot = null;
+let unsubscribeStorage = null;
 
-function getTierLimit(tier, mode) {
+function $(id) {
+  return document.getElementById(id);
+}
+
+function setText(id, value) {
+  const el = $(id);
+  if (el) el.textContent = value;
+}
+
+function tierLabel(tier) {
   switch (tier) {
-    case 'free_3d':
-      return mode === '3d' ? 2 : 0;
-    case 'premium_2d':
-      return mode === '2d' ? 195 : 0;
-    case 'premium_3d':
-      return mode === '3d' ? 180 : 0;
-    case 'ultra':
-      return 365;
-    case 'business':
-      return 9999;
-    case 'free_2d':
+    case "free_2d":
+      return "Free";
+    case "free_3d":
+      return "Free 3D";
+    case "premium_2d":
+      return "Premium";
+    case "premium_3d":
+      return "Premium 3D";
+    case "ultra":
+      return "Ultra";
+    case "business":
+      return "Business";
     default:
-      return mode === '2d' ? 4 : 0;
+      return tier ? tier.toUpperCase() : "Free";
   }
 }
 
-/**
- * Format time ago string
- */
-function formatTimeAgo(timestamp) {
-  const now = Date.now();
-  const diff = now - new Date(timestamp).getTime();
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
+function tierLimit(tier, mode) {
+  switch (tier) {
+    case "free_3d":
+      return mode === "3d" ? 2 : 0;
+    case "premium_2d":
+      return mode === "2d" ? 195 : 0;
+    case "premium_3d":
+      return mode === "3d" ? 180 : 0;
+    case "ultra":
+      return 365;
+    case "business":
+      return 9999;
+    case "free_2d":
+    default:
+      return mode === "2d" ? 4 : 0;
+  }
+}
+
+function formatTimeAgo(iso) {
+  if (!iso) return "";
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return "";
+  const diff = Date.now() - ts;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
-
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (minutes > 0) return `${minutes}m ago`;
-  return 'Just now';
+  return `${days}d`;
 }
 
-/**
- * Load stats from storage
- */
-async function loadStats() {
-  try {
-    const result = await chrome.storage.local.get([
-      CONFIG.storageKeys.dailyCount,
-      CONFIG.storageKeys.analytics,
-    ]);
-
-    const dailyCount = result[CONFIG.storageKeys.dailyCount] || 0;
-    const analytics = result[CONFIG.storageKeys.analytics] || {};
-    const totalTryOns = analytics.totalTryOns || 0;
-
-    // Update UI
-    updateStatsDisplay(dailyCount, totalTryOns);
-
-    return { dailyCount, totalTryOns };
-  } catch (error) {
-    console.error('Error loading stats:', error);
-    updateStatsDisplay(0, 0);
-    return { dailyCount: 0, totalTryOns: 0 };
-  }
+function showToast(message, tone = "info") {
+  const toast = document.createElement("div");
+  toast.className = "popup-toast";
+  toast.dataset.tone = tone;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2400);
 }
 
-/**
- * Update stats display in UI
- */
-function updateStatsDisplay(dailyCount, totalTryOns) {
-  const tryonCountEl = document.getElementById('tryonCount');
-  const progressFillEl = document.getElementById('progressFill');
-  const statsHintEl = document.querySelector('.stats-hint');
-
-  if (!tryonCountEl || !progressFillEl) return;
-
-  let dailyLimit = getUserDailyLimit();
-  let usedCount = dailyCount;
-  let periodLabel = 'today';
-
-  if (userQuota && userQuota.limit !== null) {
-    dailyLimit = userQuota.limit;
-    usedCount = typeof userQuota.used === 'number' ? userQuota.used : dailyCount;
-    periodLabel = userQuota.period || 'period';
-  }
-
-  // Update count display
-  tryonCountEl.textContent = `${usedCount}/${dailyLimit}`;
-
-  // Update progress bar
-  const percentage = dailyLimit > 0 ? Math.min((usedCount / dailyLimit) * 100, 100) : 0;
-  progressFillEl.style.width = `${percentage}%`;
-
-  // Update hint text
-  const remaining = Math.max(0, dailyLimit - usedCount);
-  if (statsHintEl) {
-    if (remaining === 0) {
-      statsHintEl.textContent = `${periodLabel} limit reached`;
-      statsHintEl.style.color = '#ef4444';
-    } else {
-      statsHintEl.textContent = `${remaining} try-ons remaining this ${periodLabel}`;
-      statsHintEl.style.color = '#6b7280';
-    }
-  }
-
-  // Update progress bar color based on remaining
-  if (remaining <= 10 && remaining > 0) {
-    progressFillEl.style.background = 'linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)';
-  } else if (remaining === 0) {
-    progressFillEl.style.background = '#ef4444';
+function applyAuth(state) {
+  const dot = document.querySelector("#authPill .popup-dot");
+  const label = $("authLabel");
+  if (state === "signed_in") {
+    if (dot) dot.dataset.state = "signed_in";
+    if (label) label.textContent = snapshot?.user?.email || "Signed in";
+  } else if (state === "signed_out") {
+    if (dot) dot.dataset.state = "signed_out";
+    if (label) label.textContent = "Sign in";
   } else {
-    progressFillEl.style.background = 'linear-gradient(90deg, #8b5cf6 0%, #3b82f6 100%)';
+    if (dot) dot.dataset.state = "loading";
+    if (label) label.textContent = "Checking session...";
   }
 }
 
-/**
- * Get user's daily limit based on tier
- */
-function getUserDailyLimit() {
-  return getTierLimit(userTier, userMode);
-}
+function applyPhoto() {
+  const avatar = $("savedPhotoAvatar");
+  const label = $("photoLabel");
+  const hint = $("photoHint");
+  const quickTryBtn = $("quickTryBtn");
+  if (!avatar || !label || !hint) return;
 
-/**
- * Load recent try-ons from storage
- */
-async function loadRecentTryOns() {
-  try {
-    const result = await chrome.storage.local.get(CONFIG.storageKeys.tryOnHistory);
-    const history = result[CONFIG.storageKeys.tryOnHistory] || [];
+  const url =
+    snapshot?.user?.default_person_smart_crop_url ||
+    snapshot?.user?.default_person_image_url ||
+    null;
 
-    // Get last N try-ons
-    const recent = history.slice(0, CONFIG.maxRecentTryOns);
-
-    displayRecentTryOns(recent);
-
-    return recent;
-  } catch (error) {
-    console.error('Error loading recent try-ons:', error);
-    displayRecentTryOns([]);
-    return [];
+  if (url) {
+    avatar.dataset.hasPhoto = "true";
+    avatar.innerHTML = "";
+    const img = document.createElement("img");
+    img.src = url;
+    img.alt = "Saved photo";
+    avatar.appendChild(img);
+    label.textContent = "Saved photo ready";
+    hint.textContent = "Quick Try is enabled on every product page.";
+    if (quickTryBtn) quickTryBtn.disabled = false;
+  } else {
+    avatar.dataset.hasPhoto = "false";
+    label.textContent = "No saved photo yet";
+    hint.textContent = "Add one to enable Quick Try.";
+    if (quickTryBtn) quickTryBtn.disabled = true;
   }
 }
 
-/**
- * Display recent try-ons in UI
- */
-function displayRecentTryOns(tryOns) {
-  const thumbnailsGrid = document.querySelector('.thumbnails-grid');
-  if (!thumbnailsGrid) return;
+function applyQuota() {
+  const tier = snapshot?.user?.subscription_tier || "free_2d";
+  const mode = snapshot?.user?.preferred_tryon_mode || "2d";
+  const quota = snapshot?.quota || null;
 
-  // Clear existing thumbnails
-  thumbnailsGrid.innerHTML = '';
+  setText("tierTag", tierLabel(tier));
 
-  if (tryOns.length === 0) {
-    // Show empty state
-    const emptyState = document.createElement('div');
-    emptyState.className = 'empty-state';
-    emptyState.style.cssText = `
-      grid-column: 1 / -1;
-      text-align: center;
-      padding: 20px;
-      color: #6b7280;
-      font-size: 13px;
-    `;
-    emptyState.textContent = 'No recent try-ons';
-    thumbnailsGrid.appendChild(emptyState);
+  let used = quota?.used ?? 0;
+  let limit = quota?.limit ?? tierLimit(tier, mode);
+  const period = quota?.period || "today";
+
+  if (limit <= 0) limit = 1; // avoid div by zero
+  setText("quotaValue", `${used}/${limit === 9999 ? "Unlimited" : limit}`);
+
+  const fill = $("quotaFill");
+  if (fill) {
+    const pct = Math.min(100, Math.max(0, (used / limit) * 100));
+    fill.style.width = `${pct}%`;
+  }
+
+  const remaining = Math.max(0, limit - used);
+  setText(
+    "quotaHint",
+    remaining === 0
+      ? `${period} limit reached - upgrade to keep going.`
+      : `${remaining} try-ons remaining ${period}.`
+  );
+
+  const upgradeCard = $("upgradeCard");
+  if (upgradeCard) {
+    const isFree = tier === "free_2d" || tier === "free_3d";
+    upgradeCard.style.display = isFree ? "" : "none";
+  }
+}
+
+function applyRecent(items) {
+  const grid = $("recentGrid");
+  const empty = $("recentEmpty");
+  if (!grid) return;
+  // Remove all non-empty children
+  Array.from(grid.querySelectorAll(".popup-recent__item")).forEach((n) => n.remove());
+
+  if (!items || items.length === 0) {
+    if (empty) empty.style.display = "";
     return;
   }
 
-  // Create thumbnail for each try-on
-  tryOns.forEach((tryOn) => {
-    const thumbnail = document.createElement('div');
-    thumbnail.className = 'thumbnail';
-    thumbnail.style.cursor = 'pointer';
+  if (empty) empty.style.display = "none";
+  items.slice(0, CONFIG.maxRecent).forEach((item) => {
+    const node = document.createElement("button");
+    node.type = "button";
+    node.className = "popup-recent__item";
+    node.title = item.label || "Open try-on";
 
-    const img = document.createElement('img');
-    img.src = tryOn.imageUrl || '/placeholder.svg?height=90&width=90';
-    img.alt = tryOn.productTitle || 'Try-on result';
+    const img = document.createElement("img");
+    img.src = item.thumbnail || item.imageUrl || "";
+    img.alt = item.label || "Try-on";
     img.onerror = () => {
-      img.src = '/placeholder.svg?height=90&width=90';
+      img.style.display = "none";
     };
+    node.appendChild(img);
 
-    const overlay = document.createElement('div');
-    overlay.className = 'thumbnail-overlay';
+    const overlay = document.createElement("div");
+    overlay.className = "popup-recent__overlay";
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = item.status === "completed" ? "Done" : item.status || "";
+    const timeSpan = document.createElement("span");
+    timeSpan.textContent = formatTimeAgo(item.timestamp);
+    overlay.appendChild(labelSpan);
+    overlay.appendChild(timeSpan);
+    node.appendChild(overlay);
 
-    const timeIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    timeIcon.setAttribute('width', '16');
-    timeIcon.setAttribute('height', '16');
-    timeIcon.setAttribute('viewBox', '0 0 24 24');
-    timeIcon.setAttribute('fill', 'none');
-    timeIcon.setAttribute('stroke', 'currentColor');
-    timeIcon.setAttribute('stroke-width', '2');
-    timeIcon.innerHTML = `
-      <circle cx="12" cy="12" r="10"/>
-      <polyline points="12 6 12 12 16 14"/>
-    `;
-
-    const timeText = document.createElement('span');
-    timeText.textContent = formatTimeAgo(tryOn.timestamp);
-
-    overlay.appendChild(timeIcon);
-    overlay.appendChild(timeText);
-
-    thumbnail.appendChild(img);
-    thumbnail.appendChild(overlay);
-
-    // Click handler - open try-on in app
-    thumbnail.addEventListener('click', () => {
-      const url = `${CONFIG.appUrl}/try?image=${encodeURIComponent(tryOn.imageUrl)}`;
-      chrome.tabs.create({ url, active: true });
+    node.addEventListener("click", () => {
+      const target = item.tryonId
+        ? `${CONFIG.appUrl}/?tryon=${item.tryonId}`
+        : `${CONFIG.appUrl}/`;
+      chrome.tabs.create({ url: target });
     });
 
-    thumbnailsGrid.appendChild(thumbnail);
+    grid.appendChild(node);
   });
 }
 
-/**
- * Fetch user tier from backend API
- */
-async function fetchUserTier() {
+async function loadSnapshot() {
   try {
-    // Check if user is logged in
-    const result = await chrome.storage.local.get(CONFIG.storageKeys.userToken);
-    const token = result[CONFIG.storageKeys.userToken];
+    const stored = await chrome.storage.local.get([
+      CONFIG.storageKeys.snapshot,
+      CONFIG.storageKeys.recentTryons,
+      CONFIG.storageKeys.userToken,
+    ]);
+    snapshot = stored[CONFIG.storageKeys.snapshot] || null;
+    const recents = stored[CONFIG.storageKeys.recentTryons] || [];
+    const token = stored[CONFIG.storageKeys.userToken];
 
     if (!token) {
-      userTier = 'free_2d';
-      userMode = '2d';
-      userQuota = null;
-      return userTier;
+      applyAuth("signed_out");
+    } else if (snapshot?.user) {
+      applyAuth("signed_in");
+    } else {
+      applyAuth("loading");
     }
 
-    // Fetch tier from API
-    const response = await fetch(`${CONFIG.apiUrl}/api/user/tier`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    applyPhoto();
+    applyQuota();
+    applyRecent(recents);
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch user tier');
+    // Ask the background SW to refresh the snapshot in the background so
+    // we always show the latest tier/quota/photo without blocking the UI.
+    if (token) {
+      try {
+        chrome.runtime.sendMessage({ action: "refreshUserSnapshot" });
+      } catch (err) {
+        // SW may be asleep; harmless.
+      }
     }
-
-    const data = await response.json();
-    userTier = data.tier || (data.data && data.data.tier) || 'free_2d';
-    userMode = data.preferred_mode || (data.data && data.data.preferred_mode) || '2d';
-    userQuota = data.quota || (data.data && data.data.quota) || null;
-
-    // Cache tier in storage
-    await chrome.storage.local.set({
-      [CONFIG.storageKeys.userTier]: userTier,
-      [CONFIG.storageKeys.userMode]: userMode,
-    });
-
-    return userTier;
-  } catch (error) {
-    console.error('Error fetching user tier:', error);
-    // Fallback to cached tier or free
-    const cached = await chrome.storage.local.get(CONFIG.storageKeys.userTier);
-    userTier = cached[CONFIG.storageKeys.userTier] || 'free_2d';
-    userMode = cached[CONFIG.storageKeys.userMode] || '2d';
-    userQuota = null;
-    return userTier;
+  } catch (err) {
+    console.error("GradFiT popup: failed to load snapshot", err);
   }
 }
 
-/**
- * Handle upload from computer button
- */
-function handleUploadFromComputer() {
-  // Create file input element
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.style.display = 'none';
+function bindStorageListener() {
+  if (unsubscribeStorage) return;
+  const handler = (changes, area) => {
+    if (area !== "local") return;
+    if (changes[CONFIG.storageKeys.snapshot]) {
+      snapshot = changes[CONFIG.storageKeys.snapshot].newValue || null;
+      applyAuth(snapshot?.user ? "signed_in" : "signed_out");
+      applyPhoto();
+      applyQuota();
+    }
+    if (changes[CONFIG.storageKeys.recentTryons]) {
+      applyRecent(changes[CONFIG.storageKeys.recentTryons].newValue || []);
+    }
+    if (changes[CONFIG.storageKeys.userToken] && !changes[CONFIG.storageKeys.userToken].newValue) {
+      snapshot = null;
+      applyAuth("signed_out");
+      applyPhoto();
+      applyQuota();
+    }
+  };
+  chrome.storage.onChanged.addListener(handler);
+  unsubscribeStorage = () => chrome.storage.onChanged.removeListener(handler);
+}
 
-  input.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+function bindActions() {
+  $("managePhotoBtn")?.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${CONFIG.appUrl}/?settings=photo` });
+  });
 
+  $("openAppBtn")?.addEventListener("click", () => {
+    chrome.tabs.create({ url: CONFIG.appUrl });
+  });
+
+  $("viewAllBtn")?.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${CONFIG.appUrl}/?tab=history` });
+  });
+
+  $("pricingBtn")?.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${CONFIG.appUrl}/#pricing` });
+  });
+
+  $("settingsBtn")?.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${CONFIG.appUrl}/?settings=true` });
+  });
+
+  $("helpBtn")?.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${CONFIG.appUrl}/help` });
+  });
+
+  $("authPill")?.addEventListener("click", async () => {
+    const stored = await chrome.storage.local.get(CONFIG.storageKeys.userToken);
+    if (!stored[CONFIG.storageKeys.userToken]) {
+      chrome.tabs.create({ url: `${CONFIG.appUrl}/login` });
+    }
+  });
+
+  $("quickTryBtn")?.addEventListener("click", async () => {
+    const btn = $("quickTryBtn");
+    if (!btn) return;
+    btn.disabled = true;
     try {
-      // Convert file to data URL
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const dataUrl = event.target.result;
-
-        // Open TryOn.AI with image data
-        const url = `${CONFIG.appUrl}/try?image=${encodeURIComponent(dataUrl)}`;
-        await chrome.tabs.create({ url, active: true });
-
-        // Track analytics
-        await chrome.runtime.sendMessage({
-          action: 'tryOnProduct',
-          metadata: {
-            imageUrl: dataUrl,
-            sourceUrl: 'file://upload',
-            productTitle: file.name,
-          },
-        });
-      };
-
-      reader.onerror = (error) => {
-        console.error('Error reading file:', error);
-        showNotification('Error reading image file', 'error');
-      };
-
-      reader.readAsDataURL(file);
-    } catch (error) {
-      console.error('Error handling file upload:', error);
-      showNotification('Error uploading image', 'error');
-    }
-
-    // Clean up
-    document.body.removeChild(input);
-  });
-
-  // Trigger file picker
-  document.body.appendChild(input);
-  input.click();
-}
-
-/**
- * Handle open app button
- */
-function handleOpenApp() {
-  chrome.tabs.create({
-    url: CONFIG.appUrl,
-    active: true,
-  });
-}
-
-/**
- * Handle settings button
- */
-function handleSettings() {
-  chrome.runtime.openOptionsPage();
-}
-
-/**
- * Handle pricing link
- */
-function handlePricing() {
-  chrome.tabs.create({
-    url: `${CONFIG.appUrl}/#pricing`,
-    active: true,
-  });
-}
-
-/**
- * Handle how to use link
- */
-function handleHowToUse() {
-  chrome.tabs.create({
-    url: `${CONFIG.appUrl}/help`,
-    active: true,
-  });
-}
-
-/**
- * Show notification toast
- */
-function showNotification(message, type = 'info') {
-  // Create toast element
-  const toast = document.createElement('div');
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#10b981' : '#667eea'};
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    z-index: 10000;
-    font-size: 13px;
-    font-weight: 500;
-    animation: slideIn 0.3s ease-out;
-  `;
-  toast.textContent = message;
-
-  // Add animation
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes slideIn {
-      from {
-        transform: translateX(400px);
-        opacity: 0;
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        showToast("No active tab", "error");
+        return;
       }
-      to {
-        transform: translateX(0);
-        opacity: 1;
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: "gradfitTryThisPage",
+      });
+      if (response?.ok) {
+        showToast("Try-on started", "success");
+        window.close();
+      } else {
+        showToast(response?.error || "No garment found on this page", "error");
       }
-    }
-  `;
-  document.head.appendChild(style);
-
-  document.body.appendChild(toast);
-
-  // Remove after 3 seconds
-  setTimeout(() => {
-    toast.style.animation = 'slideIn 0.3s ease-out reverse';
-    setTimeout(() => {
-      if (toast.parentNode) {
-        toast.parentNode.removeChild(toast);
-      }
-    }, 300);
-  }, 3000);
-}
-
-/**
- * Setup real-time stats updates
- */
-function setupRealTimeUpdates() {
-  // Update stats immediately
-  loadStats();
-
-  // Update stats every 2 seconds
-  statsInterval = setInterval(() => {
-    loadStats();
-  }, 2000);
-
-  // Listen for storage changes
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'local') {
-      if (changes[CONFIG.storageKeys.dailyCount] || changes[CONFIG.storageKeys.tryOnHistory]) {
-        loadStats();
-        loadRecentTryOns();
-      }
+    } catch (err) {
+      showToast("Open a supported product page first", "error");
+    } finally {
+      btn.disabled = !snapshot?.user?.default_person_image_url;
     }
   });
 }
 
-/**
- * Initialize popup
- */
 async function init() {
-  try {
-    // Fetch user tier
-    await fetchUserTier();
-
-    // Load initial data
-    await loadStats();
-    await loadRecentTryOns();
-
-    // Setup real-time updates
-    setupRealTimeUpdates();
-
-    // Setup button handlers
-    const uploadBtn = document.getElementById('uploadBtn');
-    const openAppBtn = document.getElementById('openAppBtn');
-    const settingsBtn = document.getElementById('settingsBtn');
-    const pricingLink = document.getElementById('pricingLink');
-    const howToUseLink = document.getElementById('howToUseLink');
-
-    if (uploadBtn) {
-      uploadBtn.addEventListener('click', handleUploadFromComputer);
-    }
-
-    if (openAppBtn) {
-      openAppBtn.addEventListener('click', handleOpenApp);
-    }
-
-    if (settingsBtn) {
-      settingsBtn.addEventListener('click', handleSettings);
-    }
-
-    if (pricingLink) {
-      pricingLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        handlePricing();
-      });
-    }
-
-    if (howToUseLink) {
-      howToUseLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        handleHowToUse();
-      });
-    }
-
-    const helpBtn = document.getElementById('helpBtn');
-    if (helpBtn) {
-      helpBtn.addEventListener('click', handleHowToUse);
-    }
-
-    // Update upgrade section based on tier
-    updateUpgradeSection();
-
-    console.log('Popup initialized');
-  } catch (error) {
-    console.error('Error initializing popup:', error);
-    showNotification('Error loading popup', 'error');
-  }
+  bindActions();
+  bindStorageListener();
+  await loadSnapshot();
 }
 
-/**
- * Update upgrade section based on user tier
- */
-function updateUpgradeSection() {
-  const upgradeSection = document.querySelector('.upgrade-section');
-  if (!upgradeSection) return;
-
-  if (userTier !== 'free_2d' && userTier !== 'free_3d') {
-    // Hide upgrade section for paid users
-    upgradeSection.style.display = 'none';
-  } else {
-    // Show upgrade section for free users
-    upgradeSection.style.display = 'flex';
-  }
-}
-
-/**
- * Cleanup on popup close
- */
-function cleanup() {
-  if (statsInterval) {
-    clearInterval(statsInterval);
-    statsInterval = null;
-  }
-}
-
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
 } else {
   init();
 }
 
-// Cleanup on unload
-window.addEventListener('beforeunload', cleanup);
+window.addEventListener("beforeunload", () => {
+  if (unsubscribeStorage) unsubscribeStorage();
+});

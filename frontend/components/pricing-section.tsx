@@ -3,15 +3,26 @@
 import { useRef } from "react"
 import { motion, useInView } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Check, ArrowRight } from "lucide-react"
+import { Check, ArrowRight, Lock } from "lucide-react"
 import { TiltCard } from "@/components/ui/tilt-card"
 import Link from "next/link"
 import { PLAN_CARDS } from "@/lib/plans"
 
-const plans = PLAN_CARDS.map((plan) => ({
-  ...plan,
-  cta: plan.code === "business" ? "Contact Sales" : "Choose Plan",
-}))
+// CTA resolution: coming-soon plans surface "Join waitlist",
+// business shows "Contact Sales", everything else routes to /pricing
+// where Stripe Checkout kicks off.
+const plans = PLAN_CARDS.map((plan) => {
+  let cta = "Choose Plan"
+  let href: string = "/pricing"
+  if (plan.code === "business") {
+    cta = "Contact Sales"
+    href = "mailto:sales@gradfit.tech"
+  } else if (plan.comingSoon) {
+    cta = plan.ctaNote || "Join the waitlist"
+    href = "/pricing"
+  }
+  return { ...plan, cta, href }
+})
 
 export function PricingSection() {
   const ref = useRef(null)
@@ -46,7 +57,7 @@ export function PricingSection() {
               transition={{ duration: 0.5, delay: index * 0.15 }}
               className="relative"
             >
-              {plan.featured && (
+              {plan.featured && !plan.comingSoon && (
                 <motion.div
                   className="absolute -top-4 left-1/2 -translate-x-1/2 z-20"
                   animate={{ scale: [1, 1.05, 1] }}
@@ -58,14 +69,22 @@ export function PricingSection() {
                 </motion.div>
               )}
 
+              {plan.comingSoon && (
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-20">
+                  <span className="bg-muted text-muted-foreground border border-border px-4 py-1 rounded-full text-xs font-semibold uppercase tracking-wider">
+                    Coming soon
+                  </span>
+                </div>
+              )}
+
               <TiltCard intensity={plan.featured ? 8 : 10} className="h-full">
                 <motion.div
                   className={`surface-panel rounded-2xl p-8 h-full ${
-                    plan.featured
+                    plan.featured && !plan.comingSoon
                       ? "border-2 border-primary/50 shadow-lg shadow-primary/10"
                       : ""
-                  }`}
-                  whileHover={{ y: -8 }}
+                  } ${plan.comingSoon ? "opacity-75" : ""}`}
+                  whileHover={plan.comingSoon ? undefined : { y: -8 }}
                   transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 >
                   <div className="space-y-6">
@@ -83,19 +102,30 @@ export function PricingSection() {
                       <span className="text-muted-foreground">{plan.cadence}</span>
                     </div>
 
-                    <Link href={plan.code === "business" ? "mailto:sales@alter.ai" : "/try"} className="block">
+                    {plan.comingSoon ? (
                       <Button
-                        className={
-                          plan.featured
-                            ? "w-full pulse-glow"
-                            : "w-full bg-white/70 border border-border text-foreground hover:bg-secondary"
-                        }
+                        className="w-full bg-white/70 border border-border text-muted-foreground cursor-not-allowed"
                         size="lg"
+                        disabled
                       >
+                        <Lock className="size-4 mr-2" />
                         {plan.cta}
-                        {plan.featured && <ArrowRight className="size-4 ml-2" />}
                       </Button>
-                    </Link>
+                    ) : (
+                      <Link href={plan.href} className="block">
+                        <Button
+                          className={
+                            plan.featured
+                              ? "w-full pulse-glow"
+                              : "w-full bg-white/70 border border-border text-foreground hover:bg-secondary"
+                          }
+                          size="lg"
+                        >
+                          {plan.cta}
+                          {plan.featured && <ArrowRight className="size-4 ml-2" />}
+                        </Button>
+                      </Link>
+                    )}
 
                     <div className="space-y-3 pt-6">
                       {plan.features.map((feature, fIndex) => (

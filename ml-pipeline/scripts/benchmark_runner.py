@@ -1,4 +1,4 @@
-"""Benchmark runner for ALTER.AI virtual try-on pipeline.
+"""Benchmark runner for GradFiT virtual try-on pipeline.
 
 Reads JSONL input where each line has:
 - person_image_url

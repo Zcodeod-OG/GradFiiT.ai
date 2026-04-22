@@ -15,10 +15,19 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
 from app.database import engine
-from app.api.routes import auth, garments, tryon, upload, user
+from app.api.routes import (
+    affiliate,
+    auth,
+    billing,
+    garments,
+    tryon,
+    upload,
+    user,
+    webhook,
+)
 
 
-logger = logging.getLogger("alterai.api")
+logger = logging.getLogger("gradfit.api")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -53,7 +62,7 @@ async def lifespan(app: FastAPI):
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 app = FastAPI(
-    title="ALTER.ai API",
+    title="GradFiT API",
     description="AI-powered virtual try-on API",
     version="1.0.0",
     lifespan=lifespan,
@@ -130,11 +139,14 @@ app.include_router(user.router, tags=["user"])
 app.include_router(garments.router, prefix="/api/garments", tags=["garments"])
 app.include_router(tryon.router, tags=["tryon"])
 app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
+app.include_router(webhook.router, tags=["webhooks"])
+app.include_router(billing.router)
+app.include_router(affiliate.router)
 
 
 @app.get("/")
 async def root():
-    return {"message": "ALTER.ai API", "version": app.version}
+    return {"message": "GradFiT API", "version": app.version}
 
 
 @app.get("/health")

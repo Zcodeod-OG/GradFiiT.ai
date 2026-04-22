@@ -11,7 +11,7 @@ for path in sys.path:
 print("\n--- TRYING TO IMPORT ---")
 try:
     # REPLACE 'pandas' WITH THE NAME OF YOUR MISSING LIBRARY
-    import pandas 
-    print(f"SUCCESS: Library found at {pandas.__file__}")
+    import numpy 
+    print(f"SUCCESS: Library found at {numpy.__file__}")
 except ImportError as e:
     print(f"FAILURE: {e}")

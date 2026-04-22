@@ -5,7 +5,7 @@ from app.services.tryon_runner import mark_tryon_dead_letter, run_tryon_pipeline
 
 # Initialize Celery
 celery_app = Celery(
-    "alterai",
+    "gradfit",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
 )
@@ -42,6 +42,11 @@ def process_tryon_task(
     garment_category: str | None = None,
     preprocessed_garment_url: str | None = None,
     mode: str = "2d",
+    provider_override: str | None = None,
+    cached_default_person_url: str | None = None,
+    cached_smart_crop_url: str | None = None,
+    cached_face_url: str | None = None,
+    cached_face_embedding: list | None = None,
 ):
     """Celery task for processing virtual try-on."""
     try:
@@ -54,7 +59,12 @@ def process_tryon_task(
             garment_category=garment_category,
             preprocessed_garment_url=preprocessed_garment_url,
             mode=mode,
+            provider_override=provider_override,
             raise_on_error=True,
+            cached_default_person_url=cached_default_person_url,
+            cached_smart_crop_url=cached_smart_crop_url,
+            cached_face_url=cached_face_url,
+            cached_face_embedding=cached_face_embedding,
         )
     except Exception as exc:
         if self.request.retries >= self.max_retries:

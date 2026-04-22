@@ -13,6 +13,7 @@ class GarmentCreate(GarmentBase):
     image_url: str
     s3_key: str
     saved_to_closet: bool = True
+    source_url: Optional[str] = None
 
 
 class GarmentUpdate(BaseModel):
@@ -20,6 +21,7 @@ class GarmentUpdate(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     saved_to_closet: Optional[bool] = None
+    source_url: Optional[str] = None
 
 
 class Garment(GarmentBase):
@@ -33,6 +35,7 @@ class Garment(GarmentBase):
     preprocess_status: str
     preprocess_error: Optional[str] = None
     saved_to_closet: bool
+    source_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

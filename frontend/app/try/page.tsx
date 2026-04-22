@@ -34,9 +34,10 @@ import { uploadApi, garmentsApi, tryonApi, userApi } from "@/lib/api"
 import { getApiErrorMessage } from "@/lib/api-error"
 import { useAuth } from "@/lib/auth"
 import { TIER_LABELS, TIER_TO_ALLOWED_MODES, type SubscriptionTier, type TryOnMode } from "@/lib/plans"
-import { ProcessingStatus } from "@/components/ProcessingStatus"
+import { ProcessingStatus, type ProcessingStep } from "@/components/ProcessingStatus"
 import { ResultsModal } from "@/components/ResultsModal"
 import { MouseFollowGradient } from "@/components/ui/mouse-follow-gradient"
+import { PhotoWizard } from "@/components/onboarding/PhotoWizard"
 
 type ImageInfo = {
   url: string
@@ -62,10 +63,55 @@ type QuotaSnapshot = {
   remaining: number | null
 }
 
-const qualityOptions = [
-  { value: "fast" as QualityOption, label: "Fast", time: "30s", description: "Quick preview" },
-  { value: "balanced" as QualityOption, label: "Balanced", time: "1m", description: "Best quality" },
-  { value: "best" as QualityOption, label: "Best", time: "2m", description: "Highest quality" },
+const qualityOptions: Array<{
+  value: QualityOption
+  label: string
+  time: string
+  description: string
+  costUsd: string
+  xp: number
+}> = [
+  // Cost / time figures track Fashn pricing + our Layer-2 stack:
+  // fast = single sample, no postprocess; balanced = 2 samples + identity
+  // check + GFPGAN + Real-ESRGAN; best = tryon-max + full Layer-2.
+  { value: "fast", label: "Fast", time: "8-15s", description: "One pass, instant preview", costUsd: "$0.04", xp: 10 },
+  { value: "balanced", label: "Balanced", time: "30-45s", description: "Multi-sample + identity match", costUsd: "$0.08", xp: 20 },
+  { value: "best", label: "Best", time: "60-90s", description: "Highest fidelity, hero-ready", costUsd: "$0.18", xp: 30 },
+]
+
+const fastProcessingSteps: ProcessingStep[] = [
+  {
+    id: 0,
+    name: "Uploading images",
+    description: "Preparing your photos...",
+    icon: Upload,
+    completed: false,
+    inProgress: false,
+  },
+  {
+    id: 1,
+    name: "Analyzing garment",
+    description: "Preparing garment input...",
+    icon: FileImage,
+    completed: false,
+    inProgress: false,
+  },
+  {
+    id: 2,
+    name: "Generating try-on",
+    description: "Running OOTDiffusion only...",
+    icon: Star,
+    completed: false,
+    inProgress: false,
+  },
+  {
+    id: 3,
+    name: "Complete!",
+    description: "Your try-on is ready",
+    icon: Trophy,
+    completed: false,
+    inProgress: false,
+  },
 ]
 
 // Helper functions
@@ -154,6 +200,10 @@ export default function TryOnPage() {
   const [resultImage, setResultImage] = useState<string | null>(null)
   const [resultModelUrl, setResultModelUrl] = useState<string | null>(null)
   const [resultTurntableUrl, setResultTurntableUrl] = useState<string | null>(null)
+  // Track the garment + try-on ids so the results modal can render the
+  // "Buy this" affiliate CTA for the exact item that was tried on.
+  const [resultGarmentId, setResultGarmentId] = useState<number | null>(null)
+  const [resultTryonId, setResultTryonId] = useState<number | null>(null)
   const [tryonMode, setTryonMode] = useState<TryOnMode>("2d")
   const [quality, setQuality] = useState<QualityOption>("balanced")
   const [isProcessing, setIsProcessing] = useState(false)
@@ -173,6 +223,7 @@ export default function TryOnPage() {
 
   // Auth
   const { isAuthenticated, user, login, register, logout, loadUser } = useAuth()
+  const [photoWizardOpen, setPhotoWizardOpen] = useState(false)
   const [showLoginForm, setShowLoginForm] = useState(false)
   const [loginEmail, setLoginEmail] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
@@ -192,6 +243,15 @@ export default function TryOnPage() {
 
   const currentTier = (user?.subscription_tier || "free_2d") as SubscriptionTier
   const allowedModes = TIER_TO_ALLOWED_MODES[currentTier] || ["2d"]
+  const savedPersonPhotoUrl = user?.default_person_image_url ?? null
+  const savedPersonThumbUrl =
+    user?.default_person_smart_crop_url ?? user?.default_person_image_url ?? null
+  // When a saved photo exists and the user hasn't explicitly uploaded a
+  // different one, we hide the person dropzone entirely. The backend
+  // automatically substitutes `default_person_image_url` when the
+  // request omits `person_image_url`.
+  const usingSavedPhoto =
+    isAuthenticated && tryonMode === "2d" && !!savedPersonPhotoUrl && !personImage
   const registerAllowedModes = TIER_TO_ALLOWED_MODES[registerTier] || ["2d"]
   const registerHas3d = registerAllowedModes.includes("3d")
   const sessionXp =
@@ -261,6 +321,41 @@ export default function TryOnPage() {
       }
     }
   }, [])
+
+  // Keyboard shortcuts -- F/B/Q switch the quality lane, Enter
+  // submits when both inputs are ready. We bail out when the user is
+  // typing into an input so we never hijack normal text entry.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName?.toLowerCase()
+        if (tag === "input" || tag === "textarea" || target.isContentEditable) {
+          return
+        }
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const key = event.key.toLowerCase()
+      if (key === "q") {
+        event.preventDefault()
+        setQuality("balanced")
+      } else if (key === "f") {
+        event.preventDefault()
+        setQuality("fast")
+      } else if (key === "b") {
+        event.preventDefault()
+        setQuality("best")
+      } else if (key === "enter" && !isProcessing) {
+        if (garmentImage && (personImage || savedPersonPhotoUrl)) {
+          event.preventDefault()
+          void handleGenerate()
+        }
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isProcessing, garmentImage, personImage, savedPersonPhotoUrl])
 
   // Handle login/register
   const handleAuth = async (e: React.FormEvent) => {
@@ -501,10 +596,14 @@ export default function TryOnPage() {
   // Generate try-on
   const handleGenerate = async () => {
     const canReuseAvatar = tryonMode === "3d" && user?.avatar_status === "ready"
-    const needsPersonImage = tryonMode === "2d" || !canReuseAvatar
+    const canReuseSavedPhoto = tryonMode === "2d" && !!savedPersonPhotoUrl
+    const needsPersonImage =
+      (tryonMode === "2d" && !canReuseSavedPhoto) ||
+      (tryonMode === "3d" && !canReuseAvatar)
+    const personImageMissing = needsPersonImage && !personImage
 
-    if (!garmentImage || (needsPersonImage && !personImage)) {
-      const message = needsPersonImage
+    if (!garmentImage || personImageMissing) {
+      const message = personImageMissing
         ? "Please upload both person and garment images"
         : "Please upload a garment image"
       toast.error(message)
@@ -542,11 +641,18 @@ export default function TryOnPage() {
     setStatusMessage("Uploading images...")
 
     try {
-      // Step 1: Upload person image when required.
+      // Step 1: Upload person image only when we don't already have a
+      // saved default photo. With a saved photo we leave the field
+      // undefined and the backend route fills it in.
       setCurrentStep(0)
       setProcessingProgress(5)
       let personImageUrl: string | undefined = undefined
       if (needsPersonImage && personImage) {
+        const personUpload = await uploadApi.uploadImage(personImage.file)
+        personImageUrl = personUpload.data.url
+      } else if (personImage) {
+        // User explicitly uploaded a different photo; honour their
+        // override even when a saved default exists.
         const personUpload = await uploadApi.uploadImage(personImage.file)
         personImageUrl = personUpload.data.url
       }
@@ -562,6 +668,7 @@ export default function TryOnPage() {
         s3_key: garmentUpload.data.s3_key,
         saved_to_closet: false,
       })
+      setResultGarmentId(garmentRecord.data.id)
 
       // Step 3: Start try-on generation
       setCurrentStep(2)
@@ -578,6 +685,7 @@ export default function TryOnPage() {
         setQuotaSnapshot(initialQuota)
       }
       const tryonId = generateResponse.data.data.tryon_id
+      setResultTryonId(tryonId)
 
       // Step 4: Poll for status
       pollIntervalRef.current = setInterval(async () => {
@@ -588,16 +696,25 @@ export default function TryOnPage() {
           setProcessingProgress(statusData.progress)
           setStatusMessage(statusData.current_stage)
 
-          // Map progress to step index
-          if (statusData.progress < 25) setCurrentStep(2)
-          else if (statusData.progress < 50) setCurrentStep(2)
-          else if (statusData.progress < 75) setCurrentStep(3)
-          else if (statusData.progress < 100) setCurrentStep(3)
-          else setCurrentStep(4)
+          // Map progress to step index. Fast 2D stays OOT-only with no enhance step.
+          const effectiveQuality = (statusData?.pipeline_metadata?.quality_effective as QualityOption | undefined) || quality
+          const isFast2DExecution = tryonMode === "2d" && effectiveQuality === "fast"
+          if (isFast2DExecution) {
+            if (statusData.progress < 20) setCurrentStep(1)
+            else if (statusData.progress < 100) setCurrentStep(2)
+            else setCurrentStep(3)
+          } else {
+            if (statusData.progress < 25) setCurrentStep(2)
+            else if (statusData.progress < 50) setCurrentStep(2)
+            else if (statusData.progress < 75) setCurrentStep(3)
+            else if (statusData.progress < 100) setCurrentStep(3)
+            else setCurrentStep(4)
+          }
 
           if (statusData.status === "completed") {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
             if (estimatedTimeIntervalRef.current) clearInterval(estimatedTimeIntervalRef.current)
+            setCurrentStep(isFast2DExecution ? 3 : 4)
             setResultImage(statusData.result_image_url)
             setResultModelUrl(statusData.result_model_url || null)
             setResultTurntableUrl(statusData.result_turntable_url || null)
@@ -800,8 +917,56 @@ export default function TryOnPage() {
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold mb-4">Your Photo</h2>
-              
-              {!personImage ? (
+
+              {usingSavedPhoto ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-4"
+                >
+                  <div className="flex items-center gap-4 rounded-xl border border-emerald-200/70 bg-emerald-50/60 p-4">
+                    <div className="size-16 overflow-hidden rounded-lg border border-border/70 bg-muted">
+                      {savedPersonThumbUrl ? (
+                        <img
+                          src={savedPersonThumbUrl}
+                          alt="Your saved photo"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">Using your saved photo</p>
+                      <p className="text-xs text-muted-foreground">
+                        We pre-cached your face crop so this run skips the
+                        input gate.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPhotoWizardOpen(true)}
+                    >
+                      Change saved photo
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleTakePhoto}
+                    >
+                      Use a different photo just for this run
+                    </Button>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCameraCapture}
+                    className="hidden"
+                  />
+                </motion.div>
+              ) : !personImage ? (
                 <div className="space-y-4">
                   <div
                     {...getPersonRootProps()}
@@ -1205,42 +1370,62 @@ export default function TryOnPage() {
             <div className="space-y-6">
               {/* Quality Selector */}
               <div>
-                <Label className="text-base font-semibold mb-3 block">
-                  Quality Settings
-                </Label>
-                <div className="grid grid-cols-3 gap-3">
-                  {qualityOptions.map((option) => (
-                    <label
-                      key={option.value}
-                      className={cn(
-                        "relative flex flex-col items-center justify-center p-4 border-2 rounded-lg cursor-pointer transition-all",
-                        quality === option.value
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="quality"
-                        value={option.value}
-                        checked={quality === option.value}
-                        onChange={(e) =>
-                          setQuality(e.target.value as QualityOption)
-                        }
-                        className="sr-only"
-                      />
-                      <span className="font-semibold mb-1">{option.label}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {option.time}
-                      </span>
-                      <span className="text-xs text-muted-foreground mt-1">
-                        {option.description}
-                      </span>
-                      <span className="mt-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                        {option.value === "fast" ? "+10 XP" : option.value === "balanced" ? "+20 XP" : "+30 XP"}
-                      </span>
-                    </label>
-                  ))}
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <Label className="text-base font-semibold">
+                    Quality lane
+                  </Label>
+                  <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                    Press Q · B · F to switch
+                  </span>
+                </div>
+                <div className="relative grid grid-cols-3 gap-3">
+                  {qualityOptions.map((option) => {
+                    const active = quality === option.value
+                    return (
+                      <label
+                        key={option.value}
+                        className={cn(
+                          "relative isolate flex flex-col items-start gap-1 p-4 border-2 rounded-xl cursor-pointer transition-colors",
+                          active
+                            ? "border-transparent text-primary"
+                            : "border-border hover:border-primary/40"
+                        )}
+                      >
+                        {active ? (
+                          <motion.span
+                            layoutId="quality-lane-bg"
+                            className="absolute inset-0 -z-10 rounded-xl bg-gradient-to-br from-primary/15 via-sky-400/10 to-emerald-300/10 ring-2 ring-primary/40"
+                            transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                          />
+                        ) : null}
+                        <input
+                          type="radio"
+                          name="quality"
+                          value={option.value}
+                          checked={active}
+                          onChange={(e) =>
+                            setQuality(e.target.value as QualityOption)
+                          }
+                          className="sr-only"
+                        />
+                        <span className="font-semibold text-foreground">{option.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {option.description}
+                        </span>
+                        <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
+                          <span className="rounded-md bg-white/70 px-1.5 py-0.5 font-medium text-foreground">
+                            {option.time}
+                          </span>
+                          <span className="rounded-md bg-white/70 px-1.5 py-0.5 font-medium text-foreground">
+                            {option.costUsd}
+                          </span>
+                        </div>
+                        <span className="mt-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                          +{option.xp} XP
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
 
@@ -1251,10 +1436,10 @@ export default function TryOnPage() {
                   !garmentImage ||
                   isProcessing ||
                   (tryonMode === "2d"
-                    ? !personImage
+                    ? !(personImage || savedPersonPhotoUrl)
                     : !(personImage || user?.avatar_status === "ready"))
                 }
-                className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90"
+                className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary via-sky-500 to-emerald-400 hover:opacity-95"
               >
                 {isProcessing ? (
                   <>
@@ -1285,6 +1470,7 @@ export default function TryOnPage() {
                       currentStep={currentStep}
                       estimatedTimeRemaining={estimatedTimeRemaining}
                       onCancel={handleCancelGeneration}
+                      steps={tryonMode === "2d" && quality === "fast" ? fastProcessingSteps : undefined}
                       isCompleted={!isProcessing && resultImage !== null}
                     />
                   </motion.div>
@@ -1299,20 +1485,54 @@ export default function TryOnPage() {
       <ResultsModal
         open={showResult}
         onOpenChange={setShowResult}
-        beforeImage={personImage?.url || ""}
+        beforeImage={personImage?.url || savedPersonThumbUrl || ""}
         afterImage={resultImage || ""}
         resultMode={tryonMode}
         modelUrl={resultModelUrl || undefined}
         turntableUrl={resultTurntableUrl || undefined}
+        garmentId={resultGarmentId ?? undefined}
+        tryonId={resultTryonId ?? undefined}
         onTryAnother={() => {
-          handleClear("person")
+          // "Try another outfit" only resets the garment slot when the
+          // user has a saved photo -- the whole point of the persistent
+          // photo is they shouldn't have to re-upload between runs.
+          if (!savedPersonPhotoUrl) {
+            handleClear("person")
+          }
           handleClear("garment")
           setResultImage(null)
           setResultModelUrl(null)
           setResultTurntableUrl(null)
+          setResultGarmentId(null)
+          setResultTryonId(null)
+          setShowResult(false)
         }}
         isAuthenticated={isAuthenticated}
         onLogin={() => setShowLoginForm(true)}
+      />
+
+      <PhotoWizard
+        open={photoWizardOpen}
+        onOpenChange={setPhotoWizardOpen}
+        initialPhoto={
+          user?.default_person_image_url
+            ? {
+                url: user.default_person_image_url,
+                smart_crop_url: user.default_person_smart_crop_url ?? null,
+                face_url: user.default_person_face_url ?? null,
+                uploaded_at: user.default_person_uploaded_at ?? null,
+                gate: (user.default_person_input_gate_metrics as
+                  | {
+                      passed: boolean
+                      reasons: string[]
+                      smart_cropped: boolean
+                      metrics: Record<string, unknown>
+                    }
+                  | null) ?? null,
+                has_embedding: false,
+              }
+            : null
+        }
       />
       {/* Login Dialog */}
       <Dialog open={showLoginForm} onOpenChange={setShowLoginForm}>

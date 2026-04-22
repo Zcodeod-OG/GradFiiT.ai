@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ALTER.ai - Virtual Fashion Try-On",
+  "name": "GradFiT - Graduate your fit.",
   "version": "1.0.0",
-  "description": "Try on clothes instantly from any online store with AI-powered virtual try-on technology",
+  "description": "Wear it before you buy it. Virtual try-on from any online store, in seconds.",
   "permissions": [
     "activeTab",
     "storage",
@@ -20,14 +20,14 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/content.js"],
+      "js": ["content/content.js", "content/gradfit-floating.js"],
       "css": ["content/overlay.css"],
       "run_at": "document_idle"
     }
   ],
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "ALTER.ai - Virtual Try-On",
+    "default_title": "GradFiT - Virtual Try-On",
     "default_icon": {
       "16": "assets/icon-16.png",
       "48": "assets/icon-48.png",

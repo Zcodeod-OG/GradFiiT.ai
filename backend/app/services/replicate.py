@@ -5,6 +5,7 @@ Handles virtual try-on generation using Replicate API
 
 import logging
 import os
+import time
 from typing import Dict, Any, Optional, List
 import replicate
 from replicate.exceptions import ReplicateError
@@ -62,6 +63,11 @@ class ReplicateService:
     def _is_auth_error(details: str) -> bool:
         lowered = (details or "").lower()
         return "unauthenticated" in lowered or "authentication token" in lowered
+
+    @staticmethod
+    def _is_rate_limited(details: str) -> bool:
+        lowered = (details or "").lower()
+        return "status: 429" in lowered or "throttled" in lowered or "rate limit" in lowered
 
     def _ensure_client(self) -> replicate.Client:
         if not self.client:
@@ -121,40 +127,65 @@ class ReplicateService:
         garment_image_url: str,
         garment_category: str,
     ) -> List[Dict[str, Any]]:
-        # Different OOTDiffusion deployments expose slightly different input keys.
-        # We try the common schemas in order and stop on first success.
-        return [
-            {
-                "model_image": person_image_url,
-                "cloth_image": garment_image_url,
-                "category": garment_category,
-            },
-            {
-                "person_image": person_image_url,
-                "garment_image": garment_image_url,
-                "category": garment_category,
-            },
-            {
-                "human_img": person_image_url,
-                "garm_img": garment_image_url,
-                "category": garment_category,
-            },
-        ]
+        # The pinned default model `viktorfa/oot_diffusion` only accepts
+        # `model_image` + `garment_image` (+ optional steps/guidance_scale/seed).
+        # Cog rejects unknown fields with 422, so the primary candidate must
+        # match that schema exactly. The remaining shapes are legacy fallbacks
+        # for other OOT-style community models that some deployments may pin.
+        primary = {
+            "model_image": person_image_url,
+            "garment_image": garment_image_url,
+            "steps": 20,
+            "guidance_scale": 2,
+        }
+        legacy_with_category = {
+            "model_image": person_image_url,
+            "garment_image": garment_image_url,
+            "category": garment_category,
+        }
+        legacy_garm_img = {
+            "model_img": person_image_url,
+            "garm_img": garment_image_url,
+            "category": garment_category,
+        }
+        legacy_human_img = {
+            "human_img": person_image_url,
+            "garm_img": garment_image_url,
+            "category": garment_category,
+        }
+        return [primary, legacy_with_category, legacy_garm_img, legacy_human_img]
 
     def run_model(self, model_ref: str, input_data: Dict[str, Any]):
         """Run a Replicate model with token refresh/retry on auth failure."""
-        try:
-            return self._ensure_client().run(model_ref, input=input_data)
-        except ReplicateError as auth_exc:
-            details = str(auth_exc)
-            if self._is_auth_error(details):
-                logger.warning(
-                    "Replicate auth error for model %s, refreshing token/client and retrying once",
-                    model_ref,
-                )
-                self._refresh_client(force=True)
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
                 return self._ensure_client().run(model_ref, input=input_data)
-            raise
+            except ReplicateError as exc:
+                details = str(exc)
+                if self._is_auth_error(details) and attempt < max_attempts:
+                    logger.warning(
+                        "Replicate auth error for model %s, refreshing token/client and retrying (attempt %s/%s)",
+                        model_ref,
+                        attempt + 1,
+                        max_attempts,
+                    )
+                    self._refresh_client(force=True)
+                    continue
+
+                if self._is_rate_limited(details) and attempt < max_attempts:
+                    backoff_seconds = min(12, 3 * attempt)
+                    logger.warning(
+                        "Replicate rate-limited for model %s; retrying in %ss (attempt %s/%s)",
+                        model_ref,
+                        backoff_seconds,
+                        attempt + 1,
+                        max_attempts,
+                    )
+                    time.sleep(backoff_seconds)
+                    continue
+
+                raise
 
     def _to_provider_access_url(self, image_url: str) -> str:
         """Ensure provider can access private bucket objects via signed URL."""

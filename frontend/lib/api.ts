@@ -21,6 +21,21 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (typeof window !== "undefined") {
+      const status = error?.response?.status;
+      const detail = String(error?.response?.data?.detail || "");
+      if (status === 401 && detail.toLowerCase().includes("validate credentials")) {
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth-storage");
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth API
 export const authApi = {
   register: (payload: {
@@ -43,6 +58,22 @@ export const authApi = {
   getMe: () => api.get("/api/auth/me"),
 };
 
+export type PersonPhotoGate = {
+  passed: boolean;
+  reasons: string[];
+  smart_cropped: boolean;
+  metrics: Record<string, unknown>;
+};
+
+export type PersonPhotoData = {
+  url: string | null;
+  smart_crop_url: string | null;
+  face_url: string | null;
+  uploaded_at: string | null;
+  gate: PersonPhotoGate | null;
+  has_embedding: boolean;
+};
+
 export const userApi = {
   getTier: () => api.get("/api/user/tier"),
   getAvatarStatus: () => api.get("/api/user/avatar/status"),
@@ -60,6 +91,26 @@ export const userApi = {
     notes?: string;
     force_rebuild?: boolean;
   }) => api.post("/api/user/avatar/build", data),
+
+  // Persistent canonical "person photo" -- upload once, reused across
+  // /try, the Quick Try card, and the Chrome extension overlay.
+  getPersonPhoto: () =>
+    api.get<{ success: boolean; data: PersonPhotoData }>(
+      "/api/user/person-photo"
+    ),
+  uploadPersonPhoto: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post<{ success: boolean; data: PersonPhotoData }>(
+      "/api/user/person-photo",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+  },
+  deletePersonPhoto: () =>
+    api.delete<{ success: boolean; data: PersonPhotoData }>(
+      "/api/user/person-photo"
+    ),
 };
 
 // Upload API
@@ -105,8 +156,73 @@ export const garmentsApi = {
   ) => api.put(`/api/garments/${id}`, data),
 };
 
+// Billing API
+export type BillingPlan = {
+  code: SubscriptionTier
+  display_name: string
+  allowed_modes: string[]
+  period: string
+  limit: number | null
+  monthly_price_usd: number | null
+  purchasable: boolean
+  coming_soon: boolean
+  cta_note: string | null
+  stripe_price_configured: boolean
+}
+
+export type BillingPlansResponse = {
+  success: boolean
+  plans: BillingPlan[]
+  current_tier: SubscriptionTier
+  subscription_status: string
+  subscription_renews_at: string | null
+  cancel_at_period_end: boolean
+}
+
+export const billingApi = {
+  listPlans: () => api.get<BillingPlansResponse>("/api/billing/plans"),
+  createCheckoutSession: (planCode: SubscriptionTier) =>
+    api.post<{ success: boolean; url: string; plan_code: string }>(
+      "/api/billing/checkout-session",
+      { plan_code: planCode }
+    ),
+  openPortal: () =>
+    api.post<{ success: boolean; url: string }>("/api/billing/portal"),
+}
+
+// Affiliate API
+export type AffiliateLinkPayload = {
+  original_url: string
+  affiliate_url: string
+  merchant: string
+  network: string
+  commission_rate_pct: number | null
+  disclosure_text: string
+  has_commission: boolean
+}
+
+export const affiliateApi = {
+  resolve: (garmentId: number) =>
+    api.get<{ success: boolean; garment_id: number; link: AffiliateLinkPayload }>(
+      `/api/affiliate/resolve/${garmentId}`
+    ),
+  click: (payload: { garment_id?: number; tryon_id?: number; url?: string }) =>
+    api.post<{
+      success: boolean
+      link: AffiliateLinkPayload
+      click_id: number
+    }>("/api/affiliate/click", payload),
+  listNetworks: () =>
+    api.get<{ success: boolean; networks: Record<string, boolean> }>(
+      "/api/affiliate/networks"
+    ),
+}
+
 // TryOn API
 export const tryonApi = {
+  // `personImageUrl` is optional: when omitted, the backend uses the
+  // saved default person photo (POST /api/user/person-photo). Throws
+  // 422 if the user has neither a default nor an explicit URL.
   generate: (
     garmentId: number,
     personImageUrl: string | undefined,

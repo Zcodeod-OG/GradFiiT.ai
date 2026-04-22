@@ -67,7 +67,7 @@ export function FeaturesSection() {
         >
           <h2 className="font-display text-4xl md:text-5xl font-bold text-balance tracking-tight">
             Why Choose{" "}
-            <span className="text-gradient">ALTER.ai</span>
+            <span className="text-gradient">GradFiT</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
             Experience the future of online shopping with cutting-edge AI

@@ -95,7 +95,7 @@ export default function LoginPage() {
       >
         <div className="text-center mb-8">
           <h1 className="font-display text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent tracking-tight">
-            ALTER.ai
+            GradFiT
           </h1>
           <p className="text-muted-foreground mt-2">
             {isRegisterMode ? "Create your account" : "Welcome back"}

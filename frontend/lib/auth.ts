@@ -18,6 +18,11 @@ type User = {
   avatar_metadata?: Record<string, unknown> | null;
   avatar_error_message?: string | null;
   avatar_updated_at?: string | null;
+  default_person_image_url?: string | null;
+  default_person_smart_crop_url?: string | null;
+  default_person_face_url?: string | null;
+  default_person_input_gate_metrics?: Record<string, unknown> | null;
+  default_person_uploaded_at?: string | null;
   is_active: boolean;
 };
 
@@ -74,13 +79,37 @@ export const useAuth = create<AuthStore>()(
       },
 
       loadUser: async () => {
+        // Watchdog: if the backend is down or the network is frozen, we
+        // don't want the dashboard to stay stuck on the "Loading your
+        // workspace" spinner forever. Cap the wait at 12s and fall back
+        // to the public landing on timeout.
+        const TIMEOUT_MS = 12_000;
         try {
           set({ isLoading: true });
-          const response = await authApi.getMe();
+          const response = await Promise.race([
+            authApi.getMe(),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error("auth_timeout")),
+                TIMEOUT_MS
+              )
+            ),
+          ]);
           set({ user: response.data, isAuthenticated: true });
-        } catch {
+        } catch (err) {
+          const isTimeout =
+            err instanceof Error && err.message === "auth_timeout";
+          if (isTimeout && typeof window !== "undefined") {
+            console.warn(
+              "[GradFiT] /api/auth/me took more than 12s; falling back to public landing."
+            );
+            set({ user: null, isAuthenticated: false });
+            return;
+          }
           set({ user: null, isAuthenticated: false, token: null });
-          localStorage.removeItem("auth_token");
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("auth_token");
+          }
         } finally {
           set({ isLoading: false });
         }

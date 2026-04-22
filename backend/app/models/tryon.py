@@ -20,6 +20,7 @@ class TryOnStatus(str, enum.Enum):
     GARMENT_FITTING_3D = "garment_fitting_3d"
     MODEL_RENDERING_3D = "model_rendering_3d"
     RATING_COMPUTING = "rating_computing"
+    POSTPROCESSING = "postprocessing"
     COMPLETED = "completed"
     FAILED = "failed"
     DEAD_LETTER = "dead_letter"

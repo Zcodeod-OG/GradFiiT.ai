@@ -1,2 +1,2 @@
-# ALTER.ai FastAPI Application
+# GradFiT FastAPI Application
 
