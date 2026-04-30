@@ -6,9 +6,19 @@
  * so the popup feels instant when opened repeatedly.
  */
 
+const _GRADFIT_BUILD =
+  (typeof globalThis !== "undefined" && globalThis.GRADFIT_CONFIG) || {
+    appUrl: "http://localhost:3000",
+    apiUrl: "http://localhost:8000",
+    sourceHeader: "X-GradFiT-Source",
+    sourceValue: "extension",
+  };
+
 const CONFIG = {
-  appUrl: "http://localhost:3000",
-  apiUrl: "http://localhost:8000",
+  appUrl: _GRADFIT_BUILD.appUrl,
+  apiUrl: _GRADFIT_BUILD.apiUrl,
+  sourceHeader: _GRADFIT_BUILD.sourceHeader,
+  sourceValue: _GRADFIT_BUILD.sourceValue,
   storageKeys: {
     userToken: "tryon_user_token",
     snapshot: "gradfit_user_snapshot",

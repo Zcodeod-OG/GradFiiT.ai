@@ -35,6 +35,11 @@ class TryOn(Base):
     person_image_url = Column(String, nullable=False)
     garment_image_url = Column(String, nullable=True)
     tryon_mode = Column(String, nullable=False, default="2d")
+    # Origin of the request -- "web" (default), "extension" (Chrome
+    # extension, routed to Fashn fast-path), or "api" (3rd-party). Drives
+    # provider selection in app.services.tryon_providers and shows up on
+    # the dashboard so we can split latency dashboards per surface.
+    source = Column(String, nullable=False, default="web")
 
     # Garment extraction
     extracted_garment_url = Column(String, nullable=True)
@@ -55,6 +60,11 @@ class TryOn(Base):
     result_image_url = Column(String, nullable=True)
     result_model_url = Column(String, nullable=True)
     result_turntable_url = Column(String, nullable=True)
+    # Optional interim preview from providers that emit one (e.g. Fashn).
+    # Surfaced via the SSE /api/tryon/stream/{id} endpoint so the client
+    # can show progress before the final result lands. CatVTON-Flux runs
+    # a single forward and does not populate this; it stays nullable.
+    preview_image_url = Column(String, nullable=True)
 
     # Quality gate
     quality_gate_score = Column(Float, nullable=True)

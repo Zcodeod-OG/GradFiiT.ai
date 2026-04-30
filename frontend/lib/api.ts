@@ -133,10 +133,38 @@ export const uploadApi = {
 };
 
 // Garments API
+export type GarmentPreprocessStatus =
+  | "pending"
+  | "queued"
+  | "processing"
+  | "ready"
+  | "failed";
+
+export type Garment = {
+  id: number;
+  user_id: number;
+  name: string;
+  description: string | null;
+  category: string | null;
+  image_url: string;
+  s3_key: string;
+  extracted_image_url: string | null;
+  extracted_s3_key: string | null;
+  garment_type: string | null;
+  preprocess_status: GarmentPreprocessStatus;
+  preprocess_error: string | null;
+  saved_to_closet: boolean;
+  source_url: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
 export const garmentsApi = {
   list: (skip = 0, limit = 100, savedOnly = false) =>
-    api.get(`/api/garments/?skip=${skip}&limit=${limit}&saved_only=${savedOnly}`),
-  get: (id: number) => api.get(`/api/garments/${id}`),
+    api.get<Garment[]>(
+      `/api/garments/?skip=${skip}&limit=${limit}&saved_only=${savedOnly}`
+    ),
+  get: (id: number) => api.get<Garment>(`/api/garments/${id}`),
   create: (data: {
     name: string;
     description?: string;
@@ -144,7 +172,7 @@ export const garmentsApi = {
     image_url: string;
     s3_key: string;
     saved_to_closet?: boolean;
-  }) => api.post("/api/garments/", data),
+  }) => api.post<Garment>("/api/garments/", data),
   update: (
     id: number,
     data: {
@@ -153,7 +181,25 @@ export const garmentsApi = {
       category?: string;
       saved_to_closet?: boolean;
     }
-  ) => api.put(`/api/garments/${id}`, data),
+  ) => api.put<Garment>(`/api/garments/${id}`, data),
+  delete: (id: number) => api.delete(`/api/garments/${id}`),
+  fromUrl: (data: {
+    image_url: string;
+    name?: string;
+    description?: string;
+    category?: string;
+    source_url?: string;
+    save_to_closet?: boolean;
+  }) => api.post<Garment>("/api/garments/from-url", data),
+  suggestions: (id: number, limit = 6) =>
+    api.get<GarmentSuggestion[]>(
+      `/api/garments/${id}/suggestions?limit=${limit}`
+    ),
+};
+
+export type GarmentSuggestion = Garment & {
+  score: number;
+  reason: string;
 };
 
 // Billing API
@@ -218,7 +264,145 @@ export const affiliateApi = {
     ),
 }
 
+// Studios API (Design + Stylist)
+export type Design = {
+  id: number;
+  user_id: number;
+  prompt: string;
+  negative_prompt: string | null;
+  sketch_image_url: string | null;
+  style_reference_url: string | null;
+  width: number;
+  height: number;
+  num_images: number;
+  seed: number | null;
+  primary_image_url: string | null;
+  image_urls: string[];
+  saved: boolean;
+  status: string;
+  error_message: string | null;
+  pipeline_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type DesignGenerateRequest = {
+  prompt: string;
+  negative_prompt?: string;
+  sketch_image_url?: string;
+  style_reference_url?: string;
+  width?: number;
+  height?: number;
+  guidance_scale?: number;
+  num_inference_steps?: number;
+  num_images?: number;
+  seed?: number;
+  lora_uri?: string;
+  lora_scale?: number;
+};
+
+export type StylistPiece = {
+  slot: string;
+  description: string;
+  color?: string;
+  fabric?: string;
+};
+
+export type Outfit = {
+  id: number;
+  user_id: number;
+  prompt: string;
+  pieces: StylistPiece[];
+  background: string;
+  model_reference_url: string | null;
+  seed: number | null;
+  num_images: number;
+  primary_image_url: string | null;
+  image_urls: string[];
+  saved: boolean;
+  status: string;
+  error_message: string | null;
+  pipeline_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type StylistGenerateRequest = {
+  prompt: string;
+  pieces?: StylistPiece[];
+  background?: string;
+  model_reference_url?: string;
+  seed?: number;
+  num_images?: number;
+  lora_uri?: string;
+  lora_scale?: number;
+};
+
+export const studiosApi = {
+  generateDesign: (payload: DesignGenerateRequest) =>
+    api.post<Design>("/api/studios/design/generate", payload),
+  listDesigns: (skip = 0, limit = 24) =>
+    api.get<Design[]>(`/api/studios/design?skip=${skip}&limit=${limit}`),
+  getDesign: (id: number) => api.get<Design>(`/api/studios/design/${id}`),
+  deleteDesign: (id: number) => api.delete(`/api/studios/design/${id}`),
+
+  generateOutfit: (payload: StylistGenerateRequest) =>
+    api.post<Outfit>("/api/studios/stylist/generate", payload),
+  listOutfits: (skip = 0, limit = 24) =>
+    api.get<Outfit[]>(`/api/studios/stylist?skip=${skip}&limit=${limit}`),
+  getOutfit: (id: number) => api.get<Outfit>(`/api/studios/stylist/${id}`),
+  deleteOutfit: (id: number) => api.delete(`/api/studios/stylist/${id}`),
+};
+
+// Brand DNA API
+export type BrandDNA = {
+  id: number;
+  user_id: number;
+  palette: string[];
+  logos: string[];
+  model_references: string[];
+  voice: string | null;
+  lora_uri: string | null;
+  lora_status: string;
+  lora_strength: number;
+  lora_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type BrandDNAUpdate = {
+  palette?: string[];
+  logos?: string[];
+  model_references?: string[];
+  voice?: string;
+  lora_uri?: string;
+  lora_strength?: number;
+};
+
+export const brandDnaApi = {
+  get: () => api.get<BrandDNA>("/api/brand-dna"),
+  update: (payload: BrandDNAUpdate) => api.put<BrandDNA>("/api/brand-dna", payload),
+  reset: () => api.delete("/api/brand-dna"),
+};
+
 // TryOn API
+export type ComboQuality = "fast" | "balanced";
+
+export type ComboTryOnResponse = {
+  success: boolean;
+  data: {
+    tryon_id: number;
+    status: string;
+    estimated_time: string;
+    execution_mode: string;
+    combo_garment_ids: number[];
+    quality_lane: ComboQuality;
+    mode: string;
+    provider: string;
+    quota?: Record<string, unknown>;
+  };
+};
+
 export const tryonApi = {
   // `personImageUrl` is optional: when omitted, the backend uses the
   // saved default person photo (POST /api/user/person-photo). Throws
@@ -236,10 +420,168 @@ export const tryonApi = {
       mode,
     }),
 
+  // Multi-garment combo (2-3 garments, 2D-only, fast/balanced only).
+  // Order matters: bottom-layer first.
+  combo: (
+    garmentIds: number[],
+    personImageUrl?: string,
+    quality: ComboQuality = "balanced"
+  ) =>
+    api.post<ComboTryOnResponse>("/api/tryon/combo", {
+      garment_ids: garmentIds,
+      person_image_url: personImageUrl,
+      quality,
+      mode: "2d",
+    }),
+
   getStatus: (tryonId: number) => api.get(`/api/tryon/status/${tryonId}`),
 
   get: (tryonId: number) => api.get(`/api/tryon/${tryonId}`),
 
   list: (skip = 0, limit = 20) =>
     api.get(`/api/tryon/?skip=${skip}&limit=${limit}`),
+
+  // Predictive warmup of the SageMaker try-on endpoint. Fire-and-forget.
+  // Server debounces to once per 60s so it's safe to call on every mount.
+  warmup: () => api.post("/api/tryon/warmup", {}),
+
+  // On-demand Real-ESRGAN upscale of an existing result. Backend caches
+  // the upscaled URL on the TryOn row so a second click is free.
+  upscale: (tryonId: number) =>
+    api.post<{
+      success: boolean;
+      data: {
+        tryon_id: number;
+        upscaled_image_url: string;
+        from_cache: boolean;
+      };
+    }>(`/api/tryon/${tryonId}/upscale`, {}),
+
+  // Subscribe to status updates via Server-Sent Events. Returns an
+  // unsubscribe function. Prefer this over getStatus polling when the
+  // browser supports streaming. The handler is invoked each time the
+  // backend emits a status snapshot (status change, preview/result URL
+  // change). On terminal status (completed/failed) the stream closes
+  // server-side; the onClose callback fires so the caller can fall
+  // back to a final getStatus probe if needed.
+  streamStatus(
+    tryonId: number,
+    handlers: {
+      onSnapshot: (snapshot: TryOnStatusSnapshot) => void;
+      onError?: (err: Error) => void;
+      onClose?: () => void;
+    }
+  ): () => void {
+    const controller = new AbortController();
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("auth_token") || ""
+        : "";
+
+    fetch(`${API_BASE_URL}/api/tryon/stream/${tryonId}`, {
+      headers: {
+        Accept: "text/event-stream",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal: controller.signal,
+      cache: "no-store",
+    })
+      .then(async (res) => {
+        if (!res.ok || !res.body) {
+          throw new Error(
+            `SSE handshake failed (${res.status} ${res.statusText})`
+          );
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let currentEvent = "message";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buffer.indexOf("\n\n")) >= 0) {
+            const block = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 2);
+            currentEvent = "message";
+            let data = "";
+            for (const line of block.split("\n")) {
+              if (line.startsWith(":")) continue; // comment / heartbeat
+              if (line.startsWith("event:")) {
+                currentEvent = line.slice(6).trim();
+              } else if (line.startsWith("data:")) {
+                data += line.slice(5).trimStart();
+              }
+            }
+            if (currentEvent === "status" && data) {
+              try {
+                handlers.onSnapshot(JSON.parse(data) as TryOnStatusSnapshot);
+              } catch {
+                /* malformed payload — ignore, stream stays open */
+              }
+            } else if (currentEvent === "error") {
+              handlers.onError?.(new Error(data || "stream_error"));
+              controller.abort();
+              return;
+            }
+          }
+        }
+        handlers.onClose?.();
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        handlers.onError?.(err instanceof Error ? err : new Error(String(err)));
+      });
+
+    return () => controller.abort();
+  },
+};
+
+export type TryOnStatusSnapshot = {
+  tryon_id: number;
+  status: string;
+  tryon_mode: string;
+  progress: number;
+  current_stage: string;
+  extracted_garment_url: string | null;
+  stage1_result_url: string | null;
+  result_image_url: string | null;
+  preview_image_url: string | null;
+  result_model_url: string | null;
+  result_turntable_url: string | null;
+  error_message: string | null;
+  lifecycle_status: string;
+};
+
+// Looks API (saved closet outfit assemblies)
+export type Look = {
+  id: number;
+  user_id: number;
+  name: string;
+  notes: string | null;
+  garment_ids: number[];
+  last_rendered_tryon_id: number | null;
+  last_rendered_image_url: string | null;
+  last_rendered_at: string | null;
+  last_rendered_status: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export const looksApi = {
+  list: (skip = 0, limit = 100) =>
+    api.get<Look[]>(`/api/looks/?skip=${skip}&limit=${limit}`),
+  get: (id: number) => api.get<Look>(`/api/looks/${id}`),
+  create: (data: { name: string; garment_ids: number[]; notes?: string }) =>
+    api.post<Look>("/api/looks/", data),
+  update: (
+    id: number,
+    data: { name?: string; garment_ids?: number[]; notes?: string }
+  ) => api.put<Look>(`/api/looks/${id}`, data),
+  delete: (id: number) => api.delete(`/api/looks/${id}`),
+  render: (
+    id: number,
+    data: { person_image_url?: string; quality?: ComboQuality } = {}
+  ) => api.post<ComboTryOnResponse>(`/api/looks/${id}/render`, data),
 };

@@ -42,3 +42,14 @@ class Garment(GarmentBase):
     class Config:
         from_attributes = True
 
+
+class GarmentSuggestion(Garment):
+    """A garment surfaced as a pairing suggestion for a chosen anchor.
+
+    `score` is opaque to the UI (just used for ordering); `reason` is
+    a short label rendered in the suggestion card so the user
+    understands why this item was offered."""
+
+    score: float
+    reason: str
+

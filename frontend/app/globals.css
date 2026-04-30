@@ -27,6 +27,24 @@
   --radius: 0.9rem;
   --shadow-neo: 0 10px 30px oklch(0.36 0.04 250 / 0.12);
   --shadow-card: 0 12px 32px oklch(0.34 0.03 255 / 0.1);
+
+  /* ---- thenewblack-flavored studio palette ---------------------------
+   * Used by .tnb-* utilities so the studio shell can mimic that site's
+   * monochrome ink-on-bone aesthetic without disturbing the existing
+   * marketing palette. Dark mode flips ink and bone in the .dark block
+   * lower in this file. */
+  --tnb-ink: oklch(0.13 0.01 260);
+  --tnb-bone: oklch(0.97 0.005 90);
+  --tnb-line: oklch(0.86 0.005 260);
+  --tnb-mute: oklch(0.55 0.01 260);
+  --tnb-accent: oklch(0.78 0.16 75);
+}
+
+.dark {
+  --tnb-ink: oklch(0.97 0.005 90);
+  --tnb-bone: oklch(0.13 0.01 260);
+  --tnb-line: oklch(0.28 0.005 260);
+  --tnb-mute: oklch(0.65 0.01 260);
 }
 
 @theme inline {
@@ -180,6 +198,72 @@ h6,
 
 .ambient-float {
   animation: ambientFloat 8s ease-in-out infinite;
+}
+
+/* ==================== thenewblack-flavored utilities ==================== */
+
+/* Huge mono numerals used as visual anchors next to studio titles, like
+ * "STUDIO 01 / AI FASHION DESIGN" on thenewblack.ai. */
+.tnb-numeral {
+  font-family: var(--font-display), ui-monospace, monospace;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 0.85;
+  color: var(--tnb-ink);
+}
+
+.tnb-eyebrow {
+  font-family: var(--font-display), ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--tnb-mute);
+}
+
+/* Display headline that mimics the very tight tracking + condensed feel of
+ * thenewblack's "AI Fashion Platform for Brands" hero. */
+.tnb-headline {
+  font-family: var(--font-display), "Segoe UI", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
+  color: var(--tnb-ink);
+}
+
+/* Thin horizontal rule with optional inline label that sits between
+ * sections — matches the rule pattern under each STUDIO header on
+ * thenewblack.ai. */
+.tnb-rule {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--tnb-mute);
+}
+
+.tnb-rule::before,
+.tnb-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--tnb-line);
+}
+
+/* Big monochrome canvas frame for studio results. Subtle vignette, no
+ * gradient, very thin border. */
+.tnb-canvas {
+  background: var(--tnb-bone);
+  border: 1px solid var(--tnb-line);
+  border-radius: 1.25rem;
+  box-shadow: 0 40px 80px -60px oklch(0 0 0 / 0.5);
+}
+
+/* Studio rail item active treatment matching the inverted-pill on
+ * thenewblack: full ink fill with bone text. */
+.tnb-rail-active {
+  background: var(--tnb-ink);
+  color: var(--tnb-bone);
 }
 
 @keyframes pulseGlow {

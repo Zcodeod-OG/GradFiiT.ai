@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect } from "react"
+import { Suspense, useState, useCallback, useRef, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { useDropzone, type FileRejection } from "react-dropzone"
 import { motion, AnimatePresence } from "framer-motion"
@@ -195,6 +195,14 @@ const samplePersonImage = createSampleImage(512, 768, "Person")
 const sampleGarmentImage = createSampleImage(512, 512, "Garment")
 
 export default function TryOnPage() {
+  return (
+    <Suspense fallback={null}>
+      <TryOnPageInner />
+    </Suspense>
+  )
+}
+
+function TryOnPageInner() {
   const [personImage, setPersonImage] = useState<ImageInfo | null>(null)
   const [garmentImage, setGarmentImage] = useState<ImageInfo | null>(null)
   const [resultImage, setResultImage] = useState<string | null>(null)

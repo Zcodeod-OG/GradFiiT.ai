@@ -79,6 +79,7 @@ def _presign_tryon_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "extracted_garment_url",
         "stage1_result_url",
         "result_image_url",
+        "preview_image_url",
         "result_model_url",
         "result_turntable_url",
     ):
@@ -177,6 +178,7 @@ def _run_pipeline_in_background(
     cached_smart_crop_url: str | None = None,
     cached_face_url: str | None = None,
     cached_face_embedding: list | None = None,
+    source: str | None = None,
 ):
     """Thread fallback path when Celery dispatch is unavailable."""
     run_tryon_pipeline(
@@ -193,6 +195,7 @@ def _run_pipeline_in_background(
         cached_smart_crop_url=cached_smart_crop_url,
         cached_face_url=cached_face_url,
         cached_face_embedding=cached_face_embedding,
+        source=source,
     )
 
 
@@ -339,11 +342,23 @@ def _select_quality_lane(requested_quality: str, garment: Garment) -> str:
     return "balanced" if is_hard_case else "fast"
 
 
+_ALLOWED_PROVIDER_OVERRIDES = {
+    "catvton_flux",
+    "hunyuan_vto",  # deprecated alias; resolves to catvton_flux at runtime
+    "kolors_vto",
+    "flux_sagemaker",
+    "fashn",
+    "replicate_legacy",
+}
+_ALLOWED_TRYON_SOURCES = {"web", "extension", "api"}
+
+
 @router.post("/generate")
 def generate_tryon(
     data: TryOnCreate,
     x_idempotency_key: str | None = Header(default=None),
     x_tryon_provider: str | None = Header(default=None, alias="X-TryOn-Provider"),
+    x_gradfit_source: str | None = Header(default=None, alias="X-GradFiT-Source"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
@@ -450,11 +465,18 @@ def generate_tryon(
     effective_quality = _select_quality_lane(data.quality, garment)
 
     provider_override = (x_tryon_provider or "").strip().lower() or None
-    if provider_override and provider_override not in {"fashn", "replicate_legacy"}:
+    if provider_override and provider_override not in _ALLOWED_PROVIDER_OVERRIDES:
         raise HTTPException(
             status_code=400,
-            detail="X-TryOn-Provider must be one of: fashn, replicate_legacy",
+            detail=(
+                "X-TryOn-Provider must be one of: "
+                + ", ".join(sorted(_ALLOWED_PROVIDER_OVERRIDES))
+            ),
         )
+
+    request_source = (x_gradfit_source or "").strip().lower() or "web"
+    if request_source not in _ALLOWED_TRYON_SOURCES:
+        request_source = "web"
 
     idempotency_key = x_idempotency_key.strip() if x_idempotency_key else None
 
@@ -494,6 +516,7 @@ def generate_tryon(
         person_image_url=person_image_url,
         garment_image_url=garment_image_url,
         tryon_mode=requested_mode,
+        source=request_source,
         status=TryOnStatus.QUEUED,
         lifecycle_status="queued",
         idempotency_key=idempotency_key,
@@ -504,8 +527,13 @@ def generate_tryon(
             "quality_effective": effective_quality,
             "queue_mode": "celery",
             "quota": quota_snapshot,
+            "source": request_source,
             "provider_override": provider_override,
-            "provider_default": settings.TRYON_PROVIDER,
+            "provider_default": (
+                settings.TRYON_PROVIDER_EXTENSION
+                if request_source == "extension"
+                else settings.TRYON_PROVIDER
+            ),
             "used_default_person_photo": used_default_person_photo,
             "used_default_photo_cache": bool(matches_default_photo),
         },
@@ -556,6 +584,7 @@ def generate_tryon(
                         cached_smart_crop_url,
                         cached_face_url,
                         cached_face_embedding,
+                        request_source,
                     ),
                     ignore_result=True,
                 )
@@ -615,6 +644,7 @@ def generate_tryon(
                 cached_smart_crop_url,
                 cached_face_url,
                 cached_face_embedding,
+                request_source,
             ),
             daemon=True,
         )
@@ -630,7 +660,15 @@ def generate_tryon(
             "idempotency_key": idempotency_key,
             "quality_lane": effective_quality,
             "mode": requested_mode,
-            "provider": provider_override or settings.TRYON_PROVIDER,
+            "source": request_source,
+            "provider": (
+                provider_override
+                or (
+                    settings.TRYON_PROVIDER_EXTENSION
+                    if request_source == "extension"
+                    else settings.TRYON_PROVIDER
+                )
+            ),
             "quota": quota_snapshot,
         },
     }
@@ -809,20 +847,24 @@ def generate_combo_tryon(
         quality = "balanced"
 
     provider_override = (x_tryon_provider or "").strip().lower() or None
-    if provider_override and provider_override not in {"fashn", "replicate_legacy"}:
+    if provider_override and provider_override not in _ALLOWED_PROVIDER_OVERRIDES:
         raise HTTPException(
             status_code=400,
-            detail="X-TryOn-Provider must be one of: fashn, replicate_legacy",
+            detail=(
+                "X-TryOn-Provider must be one of: "
+                + ", ".join(sorted(_ALLOWED_PROVIDER_OVERRIDES))
+            ),
         )
-    # Combo chaining only works with Fashn today -- the legacy Replicate
-    # 5-stage pipeline isn't designed for feed-forward runs.
-    effective_provider = provider_override or settings.TRYON_PROVIDER
+    # Combo chaining only works with Fashn today -- the FLUX SageMaker
+    # endpoint runs the entire pipeline in a single GPU invocation and
+    # the legacy Replicate path is single-shot. Force Fashn for combos.
+    effective_provider = provider_override or "fashn"
     if effective_provider != "fashn":
         raise HTTPException(
             status_code=400,
             detail=(
                 "Combo try-on requires the Fashn provider. "
-                "Set TRYON_PROVIDER=fashn or pass X-TryOn-Provider: fashn."
+                "Pass X-TryOn-Provider: fashn."
             ),
         )
 
@@ -1106,6 +1148,7 @@ def get_tryon_status(
             "extracted_garment_url": _presign_for_browser(tryon.extracted_garment_url),
             "stage1_result_url": _presign_for_browser(tryon.stage1_result_url),
             "result_image_url": _presign_for_browser(tryon.result_image_url),
+            "preview_image_url": _presign_for_browser(tryon.preview_image_url),
             "result_model_url": _presign_for_browser(tryon.result_model_url),
             "result_turntable_url": _presign_for_browser(tryon.result_turntable_url),
             "quality_gate_score": tryon.quality_gate_score,
@@ -1121,6 +1164,126 @@ def get_tryon_status(
             "created_at": tryon.created_at.isoformat() if tryon.created_at else None,
         },
     }
+
+
+def _build_status_snapshot(tryon: TryOn) -> Dict[str, Any]:
+    """Same payload shape as GET /status/{id}.data, used by the SSE
+    streamer so polling and streaming clients see identical fields."""
+    base_label = STAGE_LABEL_MAP.get(tryon.status, "Unknown")
+    if tryon.status == TryOnStatus.POSTPROCESSING and isinstance(
+        tryon.pipeline_metadata, dict
+    ):
+        sub_stage = (
+            (tryon.pipeline_metadata.get("postprocess") or {}).get("current_stage")
+        )
+        if sub_stage in POSTPROCESS_STAGE_LABELS:
+            base_label = POSTPROCESS_STAGE_LABELS[sub_stage]
+
+    return {
+        "tryon_id": tryon.id,
+        "status": tryon.status.value,
+        "tryon_mode": tryon.tryon_mode,
+        "progress": PROGRESS_MAP.get(tryon.status, 0),
+        "current_stage": base_label,
+        "extracted_garment_url": _presign_for_browser(tryon.extracted_garment_url),
+        "stage1_result_url": _presign_for_browser(tryon.stage1_result_url),
+        "result_image_url": _presign_for_browser(tryon.result_image_url),
+        "preview_image_url": _presign_for_browser(tryon.preview_image_url),
+        "result_model_url": _presign_for_browser(tryon.result_model_url),
+        "result_turntable_url": _presign_for_browser(tryon.result_turntable_url),
+        "error_message": tryon.error_message,
+        "lifecycle_status": tryon.lifecycle_status,
+    }
+
+
+_SSE_TERMINAL_STATES = {
+    TryOnStatus.COMPLETED,
+    TryOnStatus.FAILED,
+    TryOnStatus.DEAD_LETTER,
+}
+
+
+@router.get("/stream/{tryon_id}")
+def stream_tryon_status(
+    tryon_id: int,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Server-Sent Events stream of try-on status transitions.
+
+    Replaces the 2.5s polling loop in the frontend. The stream emits a
+    JSON payload (same shape as ``GET /status/{id}.data``) every time
+    the status / result / preview URL changes, plus a heartbeat every
+    15s so corp proxies don't kill the connection. Terminates when the
+    try-on hits a terminal state (completed / failed / dead_letter) or
+    after 5 minutes, whichever comes first.
+
+    Frontend should keep ``GET /status/{id}`` polling as a fallback for
+    networks/browsers where SSE doesn't work.
+    """
+    from fastapi.responses import StreamingResponse
+    import json
+
+    from app.database import SessionLocal
+
+    user_id = current_user.id
+    poll_interval = 0.7
+    deadline = time.time() + 300.0
+    last_heartbeat = time.time()
+
+    def event_generator():
+        nonlocal last_heartbeat
+        last_signature: Optional[str] = None
+        while time.time() < deadline:
+            db = SessionLocal()
+            try:
+                tryon = (
+                    db.query(TryOn)
+                    .filter(TryOn.id == tryon_id, TryOn.user_id == user_id)
+                    .first()
+                )
+                if not tryon:
+                    yield 'event: error\ndata: {"error":"not_found"}\n\n'
+                    return
+
+                _maybe_fail_stale_tryon(tryon, db)
+                db.refresh(tryon)
+
+                snapshot = _build_status_snapshot(tryon)
+                signature = json.dumps(
+                    [
+                        snapshot["status"],
+                        snapshot.get("result_image_url"),
+                        snapshot.get("preview_image_url"),
+                        snapshot.get("stage1_result_url"),
+                        snapshot.get("current_stage"),
+                    ],
+                    sort_keys=True,
+                )
+                if signature != last_signature:
+                    yield f"event: status\ndata: {json.dumps(snapshot)}\n\n"
+                    last_signature = signature
+
+                if tryon.status in _SSE_TERMINAL_STATES:
+                    return
+
+                if time.time() - last_heartbeat >= 15.0:
+                    yield ": ping\n\n"
+                    last_heartbeat = time.time()
+            finally:
+                db.close()
+            time.sleep(poll_interval)
+
+        yield 'event: timeout\ndata: {"reason":"sse_window_exceeded"}\n\n'
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.get("/{tryon_id}")
@@ -1144,6 +1307,129 @@ def get_tryon(
     return {
         "success": True,
         "data": _presign_tryon_payload(TryOnResponse.model_validate(tryon).model_dump()),
+    }
+
+
+@router.post("/{tryon_id}/upscale")
+def upscale_tryon(
+    tryon_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Run Real-ESRGAN on an existing try-on result on demand.
+
+    The default sync postprocess no longer upscales (Phase 1.2B) so the
+    main "generate" path stays under the 8s P50 SLA. Users who want a
+    higher-resolution download trigger upscale explicitly from the
+    ResultsModal -- this endpoint runs the bundled SageMaker upscale
+    task and persists the URL on the TryOn row for caching.
+    """
+    tryon = (
+        db.query(TryOn)
+        .filter(TryOn.id == tryon_id, TryOn.user_id == current_user.id)
+        .first()
+    )
+    if not tryon:
+        raise HTTPException(status_code=404, detail="Try-on not found")
+
+    if not tryon.result_image_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Try-on has no result image yet. Wait for it to complete.",
+        )
+
+    # Cache: return the prior upscaled URL when we already produced one
+    # to avoid re-billing the SageMaker upscale task.
+    pipeline_meta = dict(tryon.pipeline_metadata or {})
+    cached_url = pipeline_meta.get("upscale_url")
+    if cached_url:
+        return {
+            "success": True,
+            "data": {
+                "tryon_id": tryon.id,
+                "upscaled_image_url": _presign_for_browser(cached_url),
+                "from_cache": True,
+            },
+        }
+
+    from app.services.postprocess.upscale import upscale_image
+
+    upscaled_url, meta = upscale_image(tryon.result_image_url)
+    if not upscaled_url:
+        raise HTTPException(
+            status_code=502,
+            detail=meta.get("error") or "Upscale failed; please try again.",
+        )
+
+    pipeline_meta["upscale_url"] = upscaled_url
+    pipeline_meta.setdefault("postprocess_on_demand", []).append(
+        {"step": "upscale", **meta}
+    )
+    tryon.pipeline_metadata = pipeline_meta
+    db.commit()
+
+    return {
+        "success": True,
+        "data": {
+            "tryon_id": tryon.id,
+            "upscaled_image_url": _presign_for_browser(upscaled_url),
+            "from_cache": False,
+        },
+    }
+
+
+_WARMUP_DEDUPE_SECONDS = 60.0
+_warmup_last_fired_at: float = 0.0
+_warmup_lock = threading.Lock()
+
+
+@router.post("/warmup")
+def warmup_tryon_endpoint(
+    target_task: str | None = None,
+    current_user: User = Depends(get_optional_active_user),
+) -> Dict[str, Any]:
+    """Predictive warmup for the SageMaker try-on endpoint.
+
+    Fire-and-forget: the frontend calls this on user activity (login,
+    garment upload, try-on studio mount) so the GPU is hot before the
+    first real request. Debounced server-side to once per 60s so a
+    chatty client can't spam the endpoint.
+
+    Always returns 200; warmup failures degrade silently because the
+    next real request will pay the cold-start instead.
+    """
+    global _warmup_last_fired_at
+    now = time.time()
+    fired = False
+    submission_id: Optional[str] = None
+
+    with _warmup_lock:
+        if now - _warmup_last_fired_at >= _WARMUP_DEDUPE_SECONDS:
+            try:
+                from app.services.sagemaker import submit_inference
+
+                target = (target_task or settings.CATVTON_FLUX_TASK or "tryon_v2").strip().lower()
+                submission = submit_inference(
+                    task="warmup",
+                    inputs={},
+                    options={"task": target},
+                    request_id=f"warmup-{int(now)}",
+                )
+                submission_id = submission.inference_id
+                _warmup_last_fired_at = now
+                fired = True
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Tryon warmup ping failed: %s", exc)
+
+    return {
+        "success": True,
+        "fired": fired,
+        "submission_id": submission_id,
+        "next_window_seconds": (
+            max(0, _WARMUP_DEDUPE_SECONDS - (now - _warmup_last_fired_at))
+            if not fired
+            else _WARMUP_DEDUPE_SECONDS
+        ),
     }
 
 

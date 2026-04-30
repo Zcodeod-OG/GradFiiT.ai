@@ -1,5 +1,5 @@
 """
-AULTER.AI - Replicate Service
+GradFiT - Replicate Service
 Handles virtual try-on generation using Replicate API
 """
 

@@ -51,6 +51,12 @@ body {
   box-shadow: var(--gradfit-shadow-card);
 }
 
+.popup-logo--image {
+  object-fit: cover;
+  background: transparent;
+  box-shadow: 0 6px 14px -8px rgba(15, 23, 42, 0.45);
+}
+
 .popup-title {
   font-size: 18px;
   font-weight: 800;

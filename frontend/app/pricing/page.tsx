@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
@@ -51,6 +51,14 @@ function mergeCatalog(backend: BillingPlan[]): MergedPlan[] {
 }
 
 export default function PricingPage() {
+  return (
+    <Suspense fallback={null}>
+      <PricingPageInner />
+    </Suspense>
+  )
+}
+
+function PricingPageInner() {
   const router = useRouter()
   const search = useSearchParams()
   const { user, isAuthenticated, loadUser } = useAuth()

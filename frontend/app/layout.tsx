@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
@@ -28,13 +29,15 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-      <html lang="en">
+      <html lang="en" suppressHydrationWarning>
       <body
           className={`${plusJakarta.variable} ${spaceGrotesk.variable} antialiased bg-background text-foreground`}
       >
-      {children}
-      <Analytics />
-      <Toaster />
+      <ThemeProvider>
+        {children}
+        <Analytics />
+        <Toaster />
+      </ThemeProvider>
       </body>
       </html>
   )

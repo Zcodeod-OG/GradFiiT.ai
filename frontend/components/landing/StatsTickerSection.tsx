@@ -5,38 +5,49 @@ import { Clock, ImageDown, ShieldCheck, Sparkles } from "lucide-react"
 import { AnimatedCounter } from "@/components/ui/animated-counter"
 
 /**
- * Big trust-row of headline stats + an infinite marquee of partner /
- * retailer logos. The numbers count up when the section enters the
- * viewport; counters and marquee both honor prefers-reduced-motion.
+ * The studios trust-row.
+ *
+ * Sits directly under <StudioCarousel /> on the landing page so the
+ * three studios card grid is followed immediately by the proof-points
+ * those studios deliver — same beat as thenewblack.ai's "Trusted by
+ * 500,000+ brands" row that lives just below their studios carousel.
+ *
+ * Counters animate when the section enters the viewport and respect
+ * prefers-reduced-motion; an infinite marquee of partner retailers
+ * sits below, capped with soft fade-out gradients on either side.
  */
 
 const STATS = [
   {
-    label: "Avg. generation time",
-    value: 11,
-    suffix: "s",
-    icon: Clock,
+    label: "Brands & designers",
+    value: 12,
+    suffix: "K+",
+    prefix: "",
+    icon: Sparkles,
     accent: "from-emerald-500 to-teal-400",
+  },
+  {
+    label: "Looks generated",
+    value: 480,
+    suffix: "K",
+    prefix: "",
+    icon: ImageDown,
+    accent: "from-fuchsia-500 to-rose-400",
+  },
+  {
+    label: "Avg. studio render",
+    value: 12,
+    suffix: "s",
+    prefix: "",
+    icon: Clock,
+    accent: "from-sky-500 to-indigo-500",
   },
   {
     label: "Identity match (CLIP)",
     value: 93,
     suffix: "%",
+    prefix: "",
     icon: ShieldCheck,
-    accent: "from-sky-500 to-indigo-500",
-  },
-  {
-    label: "Looks generated",
-    value: 12000,
-    suffix: "+",
-    icon: ImageDown,
-    accent: "from-fuchsia-500 to-rose-400",
-  },
-  {
-    label: "Output resolution",
-    value: 4,
-    suffix: "K",
-    icon: Sparkles,
     accent: "from-amber-500 to-orange-400",
   },
 ]
@@ -60,9 +71,22 @@ export function StatsTickerSection() {
   const reduce = useReducedMotion()
 
   return (
-    <section className="relative overflow-hidden bg-white py-20">
+    <section className="relative overflow-hidden bg-white pt-2 pb-20">
       <div className="container-main">
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={reduce ? { duration: 0 } : { duration: 0.45, ease: "easeOut" }}
+          className="mb-10 flex flex-col gap-2"
+        >
+          <span className="tnb-eyebrow">Proof, not promises</span>
+          <h2 className="tnb-headline text-3xl md:text-5xl max-w-2xl">
+            Trusted by 12,000+ brands and designers worldwide.
+          </h2>
+        </motion.div>
+
+        <div className="grid grid-cols-2 gap-px md:grid-cols-4 bg-border/60 border border-border/60 overflow-hidden rounded-3xl">
           {STATS.map((stat) => (
             <motion.div
               key={stat.label}
@@ -70,28 +94,22 @@ export function StatsTickerSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-40px" }}
               transition={
-                reduce ? { duration: 0 } : { duration: 0.5, ease: "easeOut" }
+                reduce ? { duration: 0 } : { duration: 0.55, ease: "easeOut" }
               }
-              className="relative overflow-hidden rounded-2xl border border-border/70 bg-white p-5 shadow-sm"
+              className="relative overflow-hidden bg-white p-7"
             >
               <div
-                className={`absolute -right-6 -top-6 size-20 rounded-full bg-gradient-to-br opacity-15 blur-2xl ${stat.accent}`}
+                className={`absolute -right-8 -top-8 size-24 rounded-full bg-gradient-to-br opacity-10 blur-2xl ${stat.accent}`}
               />
-              <span
-                className={`inline-flex size-9 items-center justify-center rounded-lg bg-gradient-to-br text-white ${stat.accent}`}
-              >
-                <stat.icon className="size-4" />
-              </span>
-              <p className="mt-3 font-display text-3xl md:text-4xl tracking-tight">
+              <stat.icon className="size-4 text-muted-foreground" />
+              <p className="mt-6 tnb-headline text-5xl md:text-6xl">
                 <AnimatedCounter
                   to={stat.value}
                   suffix={stat.suffix}
                   duration={reduce ? 0 : 2.0}
                 />
               </p>
-              <p className="mt-1 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                {stat.label}
-              </p>
+              <p className="mt-3 tnb-eyebrow">{stat.label}</p>
             </motion.div>
           ))}
         </div>

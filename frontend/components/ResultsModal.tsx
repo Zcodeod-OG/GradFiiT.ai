@@ -19,7 +19,11 @@ import {
   Check,
   LogIn,
   Bookmark,
+  Sparkles,
+  Loader2,
 } from "lucide-react"
+import { toast } from "sonner"
+import { tryonApi } from "@/lib/api"
 
 // Use Bookmark as fallback for Pinterest if not available
 const Pinterest = Bookmark
@@ -77,7 +81,45 @@ export function ResultsModal({
 }: ResultsModalProps) {
   const [downloadFormat, setDownloadFormat] = useState<DownloadFormat>("png")
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isUpscaling, setIsUpscaling] = useState(false)
+  const [upscaledUrl, setUpscaledUrl] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Reset upscale state when the active try-on changes so the user can
+  // request a fresh upscale for each generation.
+  useEffect(() => {
+    setUpscaledUrl(null)
+    setIsUpscaling(false)
+  }, [tryonId, afterImage])
+
+  const handleUpscale = useCallback(async () => {
+    if (!tryonId) {
+      toast.error("Upscale needs a saved try-on. Generate first.")
+      return
+    }
+    if (upscaledUrl) {
+      // Already upscaled — re-trigger download instead of re-running.
+      window.open(upscaledUrl, "_blank")
+      return
+    }
+    setIsUpscaling(true)
+    try {
+      const res = await tryonApi.upscale(tryonId)
+      const url = res.data?.data?.upscaled_image_url
+      if (!url) throw new Error("No upscaled URL returned.")
+      setUpscaledUrl(url)
+      toast.success(
+        res.data?.data?.from_cache
+          ? "Upscaled version ready (from cache)."
+          : "Upscaled version ready."
+      )
+      window.open(url, "_blank")
+    } catch (err) {
+      toast.error("Upscale failed. Please try again in a moment.")
+    } finally {
+      setIsUpscaling(false)
+    }
+  }, [tryonId, upscaledUrl])
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -413,6 +455,37 @@ export function ResultsModal({
                   <RefreshCw className="size-4 mr-2" />
                   Try Another Outfit
                 </Button>
+
+                {/* Upscale (on-demand Real-ESRGAN). The sync postprocess
+                    no longer upscales by default to keep generation
+                    under 8s; this button buys the high-res version
+                    when the user wants it. */}
+                {tryonId ? (
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={handleUpscale}
+                    disabled={isUpscaling}
+                    className="flex-1 sm:flex-initial"
+                  >
+                    {isUpscaling ? (
+                      <>
+                        <Loader2 className="size-4 mr-2 animate-spin" />
+                        Upscaling…
+                      </>
+                    ) : upscaledUrl ? (
+                      <>
+                        <Sparkles className="size-4 mr-2" />
+                        Open Upscaled
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="size-4 mr-2" />
+                        Upscale
+                      </>
+                    )}
+                  </Button>
+                ) : null}
               </div>
 
               {/* Buy this (affiliate CTA). Only renders when we have a

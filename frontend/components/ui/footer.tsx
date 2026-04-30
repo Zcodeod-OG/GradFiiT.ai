@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion"
 import { Twitter, Github, Linkedin, Instagram } from "lucide-react"
+import { Logo } from "@/components/brand/Logo"
 
 const socials = [
   { icon: Twitter, label: "Twitter", href: "#" },
@@ -53,12 +54,8 @@ export function Footer() {
           </div>
 
           <div className="border-t border-border pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="size-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                <span className="text-white font-display font-bold text-sm">G</span>
-              </div>
-              <span className="font-display font-bold tracking-tight text-foreground">GradFiT</span>
-            </div>
+            <Logo size={32} withWordmark />
+
 
             <div className="flex items-center gap-3">
               {socials.map((social) => (

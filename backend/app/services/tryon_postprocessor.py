@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -34,6 +35,26 @@ from app.services.postprocess.face_restore import restore_face
 from app.services.postprocess.upscale import upscale_image
 
 logger = logging.getLogger(__name__)
+
+
+# Providers whose single-call output is eligible for Layer 2. The legacy
+# Replicate pipeline runs its own multi-stage refinement and skips this.
+_POSTPROCESS_PROVIDERS = frozenset(
+    {"fashn", "catvton_flux", "hunyuan_vto", "kolors_vto"}
+)
+
+
+def _budget_seconds(name: str, default: float) -> float:
+    """Per-stage timeout budget. Pulled lazily from settings so a
+    slow third-party call can't blow the sub-8s P50 SLA."""
+    raw = getattr(settings, name, None)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
 
 
 # Optional retry callable signature. The runner wraps ``provider.run``
@@ -186,7 +207,7 @@ def postprocess(
             timings={"total_seconds": round(time.time() - overall_start, 2)},
         )
 
-    if provider_name != "fashn":
+    if provider_name not in _POSTPROCESS_PROVIDERS:
         return PostprocessResult(
             final_image_url=result_image_url,
             metrics={**metrics, "status": "skipped_provider"},
@@ -242,24 +263,37 @@ def postprocess(
     if drifted and provider_rerun and settings.IDENTITY_RETRY_MAX > 0:
         # Try every other candidate first -- one of them may already
         # have a better face match and avoid the retry cost entirely.
+        # Score them in parallel so 3 candidates ~= 1 candidate's wall time.
         best_alt: Optional[str] = None
         best_alt_score = float(similarity)
-        for cand in current_candidates:
-            if cand == current_url:
-                continue
-            alt = _identity_score(
-                person_image_url=person_image_url,
-                candidate_image_url=cand,
-                reference_embedding=reference_face_embedding,
-                reference_face_url=reference_face_url,
-            )
-            alt_sim = alt.get("similarity")
-            if isinstance(alt_sim, (int, float)) and alt_sim > best_alt_score:
-                best_alt_score = float(alt_sim)
-                best_alt = cand
-            notes.append(
-                {"step": "identity_alt_candidate", "candidate": cand, **alt}
-            )
+        alt_candidates = [c for c in current_candidates if c != current_url]
+        if alt_candidates:
+            alt_budget = _budget_seconds("POSTPROCESS_IDENTITY_BUDGET_SECONDS", 4.0)
+            with ThreadPoolExecutor(max_workers=min(4, len(alt_candidates))) as pool:
+                futures = {
+                    pool.submit(
+                        _identity_score,
+                        person_image_url=person_image_url,
+                        candidate_image_url=cand,
+                        reference_embedding=reference_face_embedding,
+                        reference_face_url=reference_face_url,
+                    ): cand
+                    for cand in alt_candidates
+                }
+                for fut, cand in futures.items():
+                    try:
+                        alt = fut.result(timeout=alt_budget)
+                    except FuturesTimeoutError:
+                        alt = {"similarity": None, "status": "timeout"}
+                    except Exception as exc:  # pragma: no cover - defensive
+                        alt = {"similarity": None, "status": "failed", "error": str(exc)}
+                    alt_sim = alt.get("similarity")
+                    if isinstance(alt_sim, (int, float)) and alt_sim > best_alt_score:
+                        best_alt_score = float(alt_sim)
+                        best_alt = cand
+                    notes.append(
+                        {"step": "identity_alt_candidate", "candidate": cand, **alt}
+                    )
 
         if best_alt and best_alt_score >= float(settings.IDENTITY_DRIFT_THRESHOLD):
             current_url = best_alt
@@ -336,24 +370,52 @@ def postprocess(
         if on_stage:
             on_stage("postprocess_face")
         face_started = time.time()
-        restored_url, restore_meta = restore_face(current_url)
-        timings["face_restore_seconds"] = round(time.time() - face_started, 2)
-        notes.append(restore_meta)
-        if restored_url:
-            current_url = restored_url
-            metrics["face_restore_url"] = restored_url
+        face_budget = _budget_seconds("POSTPROCESS_FACE_RESTORE_BUDGET_SECONDS", 6.0)
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                restored_url, restore_meta = pool.submit(
+                    restore_face, current_url
+                ).result(timeout=face_budget)
+            timings["face_restore_seconds"] = round(time.time() - face_started, 2)
+            notes.append(restore_meta)
+            if restored_url:
+                current_url = restored_url
+                metrics["face_restore_url"] = restored_url
+        except FuturesTimeoutError:
+            timings["face_restore_seconds"] = round(time.time() - face_started, 2)
+            notes.append(
+                {"step": "face_restore", "status": "timeout", "budget": face_budget}
+            )
+            metrics["face_restore_skipped_reason"] = "timeout"
 
     # ── 4. Real-ESRGAN super-resolution ───────────────────────
-    if settings.UPSCALE_ENABLED:
+    # Sync upscale is opt-in only. Default off so the user lands at the
+    # try-on result in <8s; ResultsModal exposes an "Upscale" CTA that
+    # hits POST /api/tryon/{id}/upscale on demand.
+    sync_upscale_enabled = (
+        settings.UPSCALE_ENABLED and bool(getattr(settings, "UPSCALE_SYNC_ENABLED", False))
+    )
+    if sync_upscale_enabled:
         if on_stage:
             on_stage("postprocess_upscale")
         upscale_started = time.time()
-        upscaled_url, upscale_meta = upscale_image(current_url)
-        timings["upscale_seconds"] = round(time.time() - upscale_started, 2)
-        notes.append(upscale_meta)
-        if upscaled_url:
-            current_url = upscaled_url
-            metrics["upscale_url"] = upscaled_url
+        upscale_budget = _budget_seconds("POSTPROCESS_UPSCALE_BUDGET_SECONDS", 8.0)
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                upscaled_url, upscale_meta = pool.submit(
+                    upscale_image, current_url
+                ).result(timeout=upscale_budget)
+            timings["upscale_seconds"] = round(time.time() - upscale_started, 2)
+            notes.append(upscale_meta)
+            if upscaled_url:
+                current_url = upscaled_url
+                metrics["upscale_url"] = upscaled_url
+        except FuturesTimeoutError:
+            timings["upscale_seconds"] = round(time.time() - upscale_started, 2)
+            notes.append(
+                {"step": "upscale", "status": "timeout", "budget": upscale_budget}
+            )
+            metrics["upscale_skipped_reason"] = "timeout"
 
     # ── 5. Optional BG composite back to original photo ───────
     if settings.BG_COMPOSE_ENABLED and settings.BG_ISOLATE_ENABLED:

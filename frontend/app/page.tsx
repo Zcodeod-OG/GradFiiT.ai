@@ -31,6 +31,7 @@ import { PricingSection } from "@/components/pricing-section"
 import { ScrollStory } from "@/components/landing/ScrollStory"
 import { CompareScrubSection } from "@/components/landing/CompareScrubSection"
 import { ExtensionShowcase } from "@/components/landing/ExtensionShowcase"
+import { StudioCarousel } from "@/components/landing/StudioCarousel"
 import { StatsTickerSection } from "@/components/landing/StatsTickerSection"
 import { Footer } from "@/components/ui/footer"
 import { Button } from "@/components/ui/button"
@@ -158,13 +159,14 @@ function PublicLanding() {
       <Navbar />
       <main>
         <HeroSection />
+        <StudioCarousel />
+        <StatsTickerSection />
         <ScrollStory />
         <CompareScrubSection />
         <FeaturesSection />
         <DemoSection />
         <ExtensionShowcase />
         <StyleQuestSection />
-        <StatsTickerSection />
         <HowItWorksSection />
         <PricingSection />
       </main>

@@ -22,8 +22,21 @@
     snapshot: 'gradfit_user_snapshot',
     token: 'tryon_user_token',
   };
-  const APP_URL = 'http://localhost:3000';
-  const API_URL = 'http://localhost:8000';
+  // URLs are injected at build time via globalThis.GRADFIT_CONFIG (see
+  // chrome-extension/config.js). Falling back to localhost keeps the
+  // dev unpacked workflow zero-setup.
+  const APP_URL =
+    (globalThis.GRADFIT_CONFIG && globalThis.GRADFIT_CONFIG.appUrl) ||
+    'http://localhost:3000';
+  const API_URL =
+    (globalThis.GRADFIT_CONFIG && globalThis.GRADFIT_CONFIG.apiUrl) ||
+    'http://localhost:8000';
+  const SOURCE_HEADER = 'X-GradFiT-Source';
+  const SOURCE_VALUE = 'extension';
+  const withSourceHeader = (headers) => ({
+    ...(headers || {}),
+    [SOURCE_HEADER]: SOURCE_VALUE,
+  });
   const TERMINAL = new Set(['completed', 'failed', 'dead_letter', 'cancelled']);
 
   let snapshot = null;
@@ -350,10 +363,10 @@
     try {
       const resp = await fetch(`${API_URL}/api/affiliate/click`, {
         method: 'POST',
-        headers: {
+        headers: withSourceHeader({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({
           garment_id: activeGarmentId || undefined,
           tryon_id: activeTryOnId || undefined,
@@ -498,10 +511,10 @@
     try {
       const garmentResp = await fetch(`${API_URL}/api/garments/from-url`, {
         method: 'POST',
-        headers: {
+        headers: withSourceHeader({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({
           image_url: garmentUrl,
           name: getProductTitle().slice(0, 80),
@@ -524,10 +537,10 @@
       // the web app's /try surface.
       const genResp = await fetch(`${API_URL}/api/tryon/generate`, {
         method: 'POST',
-        headers: {
+        headers: withSourceHeader({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-        },
+        }),
         body: JSON.stringify({
           garment_id: garmentId,
           quality: 'fast',
@@ -577,7 +590,7 @@
     if (!activeTryOnId) return;
     try {
       const resp = await fetch(`${API_URL}/api/tryon/status/${activeTryOnId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: withSourceHeader({ Authorization: `Bearer ${token}` }),
       });
       const body = await resp.json();
       const data = body?.data || body || {};

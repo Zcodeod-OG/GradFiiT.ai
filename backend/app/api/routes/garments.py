@@ -13,9 +13,15 @@ from app.database import get_db
 from app.config import settings
 from app.models.user import User
 from app.models.garment import Garment
-from app.schemas.garment import Garment as GarmentSchema, GarmentCreate, GarmentUpdate
+from app.schemas.garment import (
+    Garment as GarmentSchema,
+    GarmentCreate,
+    GarmentSuggestion as GarmentSuggestionSchema,
+    GarmentUpdate,
+)
 from app.api.deps import get_current_active_user
 from app.services.garment_runner import run_garment_preprocess
+from app.services.garment_suggestions import suggest_pairings
 from app.services.storage import get_storage
 from app.services.tasks import process_garment_task
 
@@ -134,6 +140,54 @@ def get_garment(
             status_code=status.HTTP_404_NOT_FOUND, detail="Garment not found"
         )
     return _serialise_garment(garment)
+
+
+@router.get(
+    "/{garment_id}/suggestions",
+    response_model=List[GarmentSuggestionSchema],
+)
+def get_garment_suggestions(
+    garment_id: int,
+    limit: int = 6,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Return ranked garments from the user's closet that pair with this one.
+
+    Powers the closet's "Complete the look" UX. The ordering rules live
+    in `app.services.garment_suggestions`; this route is a thin wrapper
+    that enforces ownership and presigns image URLs the same way the
+    rest of the garment endpoints do.
+    """
+    if limit < 1 or limit > 20:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="limit must be between 1 and 20",
+        )
+    anchor = (
+        db.query(Garment)
+        .filter(Garment.id == garment_id, Garment.user_id == current_user.id)
+        .first()
+    )
+    if not anchor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Garment not found"
+        )
+
+    results = suggest_pairings(
+        db, user_id=current_user.id, anchor=anchor, limit=limit
+    )
+    out: List[GarmentSuggestionSchema] = []
+    for s in results:
+        base = _serialise_garment(s.garment)
+        out.append(
+            GarmentSuggestionSchema(
+                **base.model_dump(),
+                score=s.score,
+                reason=s.reason,
+            )
+        )
+    return out
 
 
 @router.post("/", response_model=GarmentSchema, status_code=status.HTTP_201_CREATED)

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# GradFiT serving entrypoint invoked by SageMaker.
+# Boots a single-worker gunicorn (the GPU pipeline is not thread-safe;
+# we add concurrency through Async Inference at the SageMaker layer).
+set -e
+
+NUM_WORKERS=${SAGEMAKER_MODEL_SERVER_WORKERS:-1}
+TIMEOUT=${SAGEMAKER_MODEL_SERVER_TIMEOUT:-900}
+BIND="0.0.0.0:${SAGEMAKER_BIND_TO_PORT:-8080}"
+
+cd /opt/program
+
+exec gunicorn \
+    --bind "${BIND}" \
+    --workers "${NUM_WORKERS}" \
+    --threads 1 \
+    --timeout "${TIMEOUT}" \
+    --worker-class sync \
+    --worker-tmp-dir /dev/shm \
+    --access-logfile - \
+    --error-logfile - \
+    src.inference:app

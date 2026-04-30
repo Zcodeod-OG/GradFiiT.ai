@@ -1,5 +1,23 @@
 // Background Service Worker for GradFiT Chrome Extension (Manifest V3)
-// Handles messages, analytics, rate limiting, and badge management
+// Handles messages, analytics, rate limiting, and badge management.
+//
+// URLs are loaded from the build-time config (see ../config.js). We
+// importScripts so the same file is shared with the content scripts
+// (where ESM imports aren't allowed in classic content-script context).
+try {
+  importScripts('../config.js');
+} catch (e) {
+  // Fallback for unpacked dev installs that resolve relative paths
+  // differently across Chromium versions.
+  importScripts('/config.js');
+}
+
+const _GRADFIT = globalThis.GRADFIT_CONFIG || {
+  appUrl: 'http://localhost:3000',
+  apiUrl: 'http://localhost:8000',
+  sourceHeader: 'X-GradFiT-Source',
+  sourceValue: 'extension',
+};
 
 // Configuration
 const CONFIG = {
@@ -19,9 +37,18 @@ const CONFIG = {
   },
   snapshotMaxAgeMs: 60 * 1000,
   recentTryonsLimit: 10,
-  appUrl: 'http://localhost:3000',
-  apiUrl: 'http://localhost:8000',
+  appUrl: _GRADFIT.appUrl,
+  apiUrl: _GRADFIT.apiUrl,
+  sourceHeader: _GRADFIT.sourceHeader,
+  sourceValue: _GRADFIT.sourceValue,
 };
+
+/** Attach the GradFiT extension source flag to fetch headers. The
+ *  backend Provider Router uses this to land extension traffic on
+ *  Fashn for sub-second inference. */
+function gradfitHeaders(extra = {}) {
+  return { ...extra, [CONFIG.sourceHeader]: CONFIG.sourceValue };
+}
 
 function getTierLimit(tier, mode) {
   switch (tier) {
@@ -389,11 +416,20 @@ async function handleQuickTryOn(data, sendResponse) {
       CONFIG.storageKeys.snapshot,
     ]);
     const authToken = stored[CONFIG.storageKeys.userToken] || '';
-    const snap = stored[CONFIG.storageKeys.snapshot] || null;
+    let snap = stored[CONFIG.storageKeys.snapshot] || null;
 
     if (!authToken) {
       sendResponse({ success: false, error: 'Please sign in to GradFiT to run Quick Try.' });
       return;
+    }
+
+    // If the cached snapshot is missing a default photo, force-refresh
+    // from /api/auth/me before giving up. Covers the common case where
+    // the user just saved a photo in the web app but the extension still
+    // holds the pre-save snapshot (default_person_image_url === null).
+    if (!snap?.user?.default_person_image_url) {
+      const refreshed = await fetchUserSnapshot(true);
+      if (refreshed) snap = refreshed;
     }
     if (!snap?.user?.default_person_image_url) {
       sendResponse({
@@ -403,10 +439,10 @@ async function handleQuickTryOn(data, sendResponse) {
       return;
     }
 
-    const authHeaders = {
+    const authHeaders = gradfitHeaders({
       'Content-Type': 'application/json',
       Authorization: `Bearer ${authToken}`,
-    };
+    });
 
     // 1. Register the garment so the backend has a stable garment_id.
     //    Preprocessing runs in a background thread server-side, so this
@@ -671,10 +707,14 @@ async function handleComboTryOn(data, sendResponse) {
       CONFIG.storageKeys.snapshot,
     ]);
     const authToken = stored[CONFIG.storageKeys.userToken] || '';
-    const snap = stored[CONFIG.storageKeys.snapshot] || null;
+    let snap = stored[CONFIG.storageKeys.snapshot] || null;
     if (!authToken) {
       sendResponse({ success: false, error: 'Please sign in to GradFiT first.' });
       return;
+    }
+    if (!snap?.user?.default_person_image_url) {
+      const refreshed = await fetchUserSnapshot(true);
+      if (refreshed) snap = refreshed;
     }
     if (!snap?.user?.default_person_image_url) {
       sendResponse({
@@ -684,10 +724,10 @@ async function handleComboTryOn(data, sendResponse) {
       return;
     }
 
-    const authHeaders = {
+    const authHeaders = gradfitHeaders({
       'Content-Type': 'application/json',
       Authorization: `Bearer ${authToken}`,
-    };
+    });
 
     // 1. Make sure every staged item has a garment_id. We register any
     //    that are still "draft" (URL only, no id yet). This lets the
@@ -956,15 +996,33 @@ async function fetchUserSnapshot(force = false) {
         return stored[CONFIG.storageKeys.snapshot];
       }
 
-      const headers = {
+      const headers = gradfitHeaders({
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
-      };
+      });
 
       const [meResp, tierResp] = await Promise.allSettled([
         fetchJsonWithTimeout(`${CONFIG.apiUrl}/api/auth/me`, { method: 'GET', headers }, 8000),
         fetchJsonWithTimeout(`${CONFIG.apiUrl}/api/user/tier`, { method: 'GET', headers }, 8000),
       ]);
+
+      // If the token is rejected, drop it plus the cached snapshot so
+      // the extension stops signalling "logged in" with a stale JWT.
+      // This turns the downstream UX from a confusing "Save a default
+      // photo" (because the snapshot's user field stays null) into a
+      // clean "Please sign in to GradFiT" that the content script can
+      // recover from once the web app re-issues a token.
+      const meStatus = meResp.status === 'fulfilled' ? meResp.value.response.status : 0;
+      const tierStatus = tierResp.status === 'fulfilled' ? tierResp.value.response.status : 0;
+      if (meStatus === 401 || tierStatus === 401) {
+        console.warn('GradFiT SW: auth token rejected (401). Clearing stored token + snapshot.');
+        await chrome.storage.local.remove([
+          CONFIG.storageKeys.userToken,
+          CONFIG.storageKeys.snapshot,
+          CONFIG.storageKeys.snapshotTimestamp,
+        ]);
+        return null;
+      }
 
       let userPayload = null;
       if (meResp.status === 'fulfilled' && meResp.value.response.ok) {

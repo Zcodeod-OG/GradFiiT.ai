@@ -1,7 +1,7 @@
 # Utilities package
 
 """
-AULTER.AI - Utility Functions
+GradFiT - Utility Functions
 Helper functions and utilities
 """
 

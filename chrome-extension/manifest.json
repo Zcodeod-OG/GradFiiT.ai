@@ -14,13 +14,16 @@
     "http://*/*"
   ],
   "background": {
-    "service_worker": "background/background.js",
-    "type": "module"
+    "service_worker": "background/background.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/content.js", "content/gradfit-floating.js"],
+      "js": [
+        "config.js",
+        "content/content.js",
+        "content/gradfit-floating.js"
+      ],
       "css": ["content/overlay.css"],
       "run_at": "document_idle"
     }

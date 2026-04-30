@@ -85,6 +85,13 @@ _STAGE_TO_STATUS: Dict[str, TryOnStatus] = {
 }
 
 
+# Providers whose single-call output should pass through Layer 2
+# (identity check + face restore + optional bg compose). The legacy
+# Replicate pipeline runs its own multi-stage refinement and does not go
+# through this path.
+_POSTPROCESS_PROVIDERS = {"fashn", "catvton_flux", "hunyuan_vto", "kolors_vto"}
+
+
 def run_tryon_pipeline(
     tryon_id: int,
     person_image_url: str,
@@ -100,6 +107,7 @@ def run_tryon_pipeline(
     cached_smart_crop_url: Optional[str] = None,
     cached_face_url: Optional[str] = None,
     cached_face_embedding: Optional[Sequence[float]] = None,
+    source: Optional[str] = None,
 ) -> None:
     """Run the active try-on provider and persist status/results on the row.
 
@@ -149,6 +157,7 @@ def run_tryon_pipeline(
                 preprocessed_garment_url=preprocessed_garment_url,
                 quality=quality,
                 provider_override=provider_override,
+                source=source or (tryon.source if tryon else None),
                 cached_default_person_url=cached_default_person_url,
                 cached_smart_crop_url=cached_smart_crop_url,
                 cached_face_url=cached_face_url,
@@ -224,12 +233,13 @@ def _run_two_d_path(
     preprocessed_garment_url: Optional[str],
     quality: str,
     provider_override: Optional[str],
+    source: Optional[str] = None,
     cached_default_person_url: Optional[str] = None,
     cached_smart_crop_url: Optional[str] = None,
     cached_face_url: Optional[str] = None,
     cached_face_embedding: Optional[List[float]] = None,
 ) -> None:
-    provider = get_tryon_provider(provider_override)
+    provider = get_tryon_provider(provider_override, source=source)
 
     # When the runner was invoked with the user's saved default photo
     # *and* we have a precomputed smart-crop / face embedding for it, we
@@ -387,10 +397,10 @@ def _run_two_d_path(
     raw_provider_url = result.result_image_url
     raw_candidates = list(result.candidate_image_urls or [])
 
-    # ── Layer 2: post-processing (Fashn provider only, lane-gated) ─────
+    # ── Layer 2: post-processing (single-call providers only, lane-gated) ─
     final_image_url = raw_provider_url
     postprocess_payload: Dict[str, Any] = {}
-    if settings.TRYON_POSTPROCESS_ENABLED and provider.name == "fashn":
+    if settings.TRYON_POSTPROCESS_ENABLED and provider.name in _POSTPROCESS_PROVIDERS:
         def _provider_rerun() -> Dict[str, Any]:
             try:
                 rerun = _invoke_provider(force_new_seed=True)
@@ -440,6 +450,14 @@ def _run_two_d_path(
     tryon.extracted_garment_url = preprocessed_garment_url
     tryon.stage1_result_url = raw_provider_url
     tryon.result_image_url = final_image_url
+    # Some providers (e.g. Fashn) surface an interim preview while the
+    # final image is still rendering. Persist when present so the SSE
+    # stream and history page can show progress. CatVTON-Flux does not
+    # emit one — its single forward is fast enough that intermediate
+    # decode would cost more than just waiting.
+    preview_url = (result.provider_meta or {}).get("preview_image_url")
+    if preview_url:
+        tryon.preview_image_url = preview_url
 
     # Surface picker / legacy pipeline scoring on the existing columns so
     # the frontend doesn't need to change.
@@ -540,6 +558,7 @@ def run_combo_tryon_pipeline(
     cached_smart_crop_url: Optional[str] = None,
     cached_face_url: Optional[str] = None,
     cached_face_embedding: Optional[Sequence[float]] = None,
+    source: Optional[str] = None,
 ) -> None:
     """Chain N single-garment provider calls into one composite outfit.
 
@@ -582,7 +601,10 @@ def run_combo_tryon_pipeline(
             )
         db.commit()
 
-        provider = get_tryon_provider(provider_override)
+        provider = get_tryon_provider(
+            provider_override,
+            source=source or (tryon.source if tryon else None),
+        )
         original_person_url = person_image_url
 
         # ── Layer 1 (once, against the original person photo). ──────
@@ -724,7 +746,7 @@ def run_combo_tryon_pipeline(
         # ── Layer 2 on the final composite ──────────────────────────
         final_image_url = last_result_image
         postprocess_payload: Dict[str, Any] = {}
-        if settings.TRYON_POSTPROCESS_ENABLED and provider.name == "fashn":
+        if settings.TRYON_POSTPROCESS_ENABLED and provider.name in _POSTPROCESS_PROVIDERS:
             # Combo rescoring with CLIP-garment is ambiguous (we'd need
             # to score against both garments). Fall back to the last
             # garment -- that's usually the most visually dominant layer

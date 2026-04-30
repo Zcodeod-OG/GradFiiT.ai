@@ -1,0 +1,27 @@
+{
+  "_doc": "Apply via `aws s3api put-bucket-lifecycle-configuration --bucket gradfit-prod --lifecycle-configuration file://s3_lifecycle.json`. Two policies: 1) move inference outputs to IA after 30d and expire after 180d; 2) keep model artifacts indefinitely.",
+  "Rules": [
+    {
+      "ID": "inference-outputs-tiered",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "inference/"},
+      "Transitions": [
+        {"Days": 30, "StorageClass": "STANDARD_IA"},
+        {"Days": 90, "StorageClass": "GLACIER_IR"}
+      ],
+      "Expiration": {"Days": 180}
+    },
+    {
+      "ID": "warmup-cleanup",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "warmup/out/"},
+      "Expiration": {"Days": 1}
+    },
+    {
+      "ID": "user-saved-tryons",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "users/"},
+      "NoncurrentVersionExpiration": {"NoncurrentDays": 60}
+    }
+  ]
+}

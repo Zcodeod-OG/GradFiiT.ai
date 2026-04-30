@@ -1,12 +1,12 @@
 
-"""AULTER.AI - Application Configuration
+"""GradFiT - Application Configuration
 Centralized settings management using Pydantic"""
 
 from pathlib import Path
 from typing import Optional, List
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # ==================== Application Settings ====================
     
     APP_NAME: str = Field(
-        default="AULTER.AI",
+        default="GradFiT",
         description="Application name"
     )
     
@@ -132,23 +132,6 @@ class Settings(BaseSettings):
         description="Public URL for S3 bucket (CloudFront, etc.)"
     )
     
-    # ==================== Clerk Authentication ====================
-    
-    CLERK_SECRET_KEY: Optional[str] = Field(
-        default=None,
-        description="Clerk secret key for JWT verification"
-    )
-
-    CLERK_PUBLISHABLE_KEY: Optional[str] = Field(
-        default=None,
-        description="Clerk publishable key"
-    )
-    
-    CLERK_WEBHOOK_SECRET: Optional[str] = Field(
-        default=None,
-        description="Clerk webhook signing secret"
-    )
-    
     # ==================== Replicate API ====================
     
     REPLICATE_API_TOKEN: str = Field(
@@ -169,8 +152,79 @@ class Settings(BaseSettings):
     # ==================== Try-On Provider Selection ====================
 
     TRYON_PROVIDER: str = Field(
+        default="catvton_flux",
+        description=(
+            "Active try-on provider for the main web product. One of: "
+            "catvton_flux (CatVTON-Flux on SageMaker, default; alias "
+            "'hunyuan_vto' still resolves here), "
+            "kolors_vto (Kling Kolors-VTO via Replicate), "
+            "flux_sagemaker (legacy bundled FLUX), "
+            "fashn, replicate_legacy."
+        ),
+    )
+
+    TRYON_PROVIDER_EXTENSION: str = Field(
         default="fashn",
-        description="Active try-on provider. One of: fashn, replicate_legacy"
+        description=(
+            "Try-on provider used for requests originating from the Chrome "
+            "extension (source=extension). Defaults to fashn for sub-second "
+            "latency. Falls back to TRYON_PROVIDER when fashn is not configured."
+        ),
+    )
+
+    TRYON_PROVIDER_FALLBACK_LADDER: str = Field(
+        default="catvton_flux,kolors_vto,fashn,flux_sagemaker",
+        description=(
+            "Comma-separated provider slugs in priority order for the web "
+            "fallback ladder. The first credentialed provider wins."
+        ),
+    )
+
+    # ==================== SageMaker (FLUX bundled endpoint) ====================
+
+    SAGEMAKER_ENDPOINT_NAME: str = Field(
+        default="gradfit-serving",
+        description="Name of the GradFiT serving endpoint (FLUX + LoRA + ControlNet + SAM2 + Real-ESRGAN)",
+    )
+
+    SAGEMAKER_INPUT_BUCKET: Optional[str] = Field(
+        default=None,
+        description="S3 bucket for async inference inputs. Defaults to S3_BUCKET_NAME.",
+    )
+
+    SAGEMAKER_INPUT_PREFIX: str = Field(
+        default="inference/inputs",
+        description="S3 prefix for async inference inputs",
+    )
+
+    SAGEMAKER_OUTPUT_BUCKET: Optional[str] = Field(
+        default=None,
+        description="S3 bucket for async inference outputs. Defaults to S3_BUCKET_NAME.",
+    )
+
+    SAGEMAKER_OUTPUT_PREFIX: str = Field(
+        default="inference/outputs",
+        description="S3 prefix the serving container writes its result images under",
+    )
+
+    SAGEMAKER_POLL_INTERVAL_SECONDS: float = Field(
+        default=2.0,
+        description="Polling interval for SageMaker async output S3 keys",
+    )
+
+    SAGEMAKER_MAX_WAIT_SECONDS: int = Field(
+        default=300,
+        description="Maximum wall-clock wait for a SageMaker async response",
+    )
+
+    SAGEMAKER_INVOCATION_TIMEOUT_SECONDS: int = Field(
+        default=900,
+        description="InvocationTimeoutSeconds passed to invoke_endpoint_async",
+    )
+
+    SAGEMAKER_DEFAULT_LORA_URI: Optional[str] = Field(
+        default=None,
+        description="Optional default LoRA URI to apply for every FLUX request",
     )
 
     TRYON_OUTPUT_RESOLUTION: str = Field(
@@ -181,6 +235,38 @@ class Settings(BaseSettings):
     TRYON_OUTPUT_FORMAT: str = Field(
         default="png",
         description="Default output format for single-call providers (png|jpeg)"
+    )
+
+    # ==================== Kolors-VTO Provider (Replicate) ====================
+
+    KOLORS_VTO_MODEL: str = Field(
+        default="kwai-kolors/kolors-virtual-try-on",
+        description=(
+            "Replicate slug (or slug:version) for Kling Kolors Virtual Try-On. "
+            "A specialized VTO model with strong garment fidelity in 4-8s."
+        ),
+    )
+
+    KOLORS_VTO_MAX_WAIT_SECONDS: int = Field(
+        default=120,
+        description="Maximum wall-clock wait for a Kolors-VTO prediction"
+    )
+
+    KOLORS_VTO_POLL_INTERVAL_SECONDS: float = Field(
+        default=1.0,
+        description="Polling interval (seconds) when waiting for Kolors-VTO predictions"
+    )
+
+    # ==================== CatVTON-Flux Provider (SageMaker tryon_v2) ====================
+
+    CATVTON_FLUX_TASK: str = Field(
+        default="tryon_v2",
+        description=(
+            "SageMaker container task slug for the CatVTON-Flux pipeline. "
+            "Routed via the same gradfit-serving endpoint, separate from "
+            "the legacy 'tryon' (FLUX) task."
+        ),
+        validation_alias=AliasChoices("CATVTON_FLUX_TASK", "HUNYUAN_VTO_TASK"),
     )
 
     # ==================== Fashn.ai Provider ====================
@@ -323,6 +409,40 @@ class Settings(BaseSettings):
     UPSCALE_ENABLED: bool = Field(
         default=True,
         description="Layer 2: Real-ESRGAN super-resolution on the VTON output (BSD-3)"
+    )
+
+    UPSCALE_SYNC_ENABLED: bool = Field(
+        default=False,
+        description=(
+            "When False (default), upscale runs on demand via "
+            "POST /api/tryon/{id}/upscale instead of inline in the "
+            "synchronous try-on path. Keeps fast/balanced lanes under "
+            "the 8s P50 SLA."
+        ),
+    )
+
+    POSTPROCESS_IDENTITY_BUDGET_SECONDS: float = Field(
+        default=4.0,
+        description=(
+            "Per-stage timeout for the identity check + alt-candidate scoring "
+            "loop. Slow embeddings get cut off rather than blowing the SLA."
+        ),
+    )
+
+    POSTPROCESS_FACE_RESTORE_BUDGET_SECONDS: float = Field(
+        default=6.0,
+        description=(
+            "Per-stage timeout for GFPGAN face restoration. On timeout the "
+            "raw VTON output is returned and the restore step is skipped."
+        ),
+    )
+
+    POSTPROCESS_UPSCALE_BUDGET_SECONDS: float = Field(
+        default=8.0,
+        description=(
+            "Per-stage timeout for Real-ESRGAN upscale (only relevant when "
+            "UPSCALE_SYNC_ENABLED is True)."
+        ),
     )
 
     UPSCALE_MODEL: str = Field(
@@ -787,11 +907,37 @@ class Settings(BaseSettings):
     @field_validator("TRYON_PROVIDER")
     @classmethod
     def validate_tryon_provider(cls, v: str) -> str:
-        """Validate try-on provider selection."""
-        normalized = (v or "fashn").strip().lower()
-        allowed = ["fashn", "replicate_legacy"]
+        """Validate try-on provider selection. Accepts the deprecated
+        ``hunyuan_vto`` slug and rewrites to ``catvton_flux``."""
+        normalized = (v or "catvton_flux").strip().lower()
+        if normalized == "hunyuan_vto":
+            normalized = "catvton_flux"
+        allowed = [
+            "catvton_flux",
+            "kolors_vto",
+            "flux_sagemaker",
+            "fashn",
+            "replicate_legacy",
+        ]
         if normalized not in allowed:
             raise ValueError(f"TRYON_PROVIDER must be one of {allowed}")
+        return normalized
+
+    @field_validator("TRYON_PROVIDER_EXTENSION")
+    @classmethod
+    def validate_tryon_provider_extension(cls, v: str) -> str:
+        normalized = (v or "fashn").strip().lower()
+        if normalized == "hunyuan_vto":
+            normalized = "catvton_flux"
+        allowed = [
+            "catvton_flux",
+            "kolors_vto",
+            "flux_sagemaker",
+            "fashn",
+            "replicate_legacy",
+        ]
+        if normalized not in allowed:
+            raise ValueError(f"TRYON_PROVIDER_EXTENSION must be one of {allowed}")
         return normalized
 
     @field_validator("TRYON_OUTPUT_FORMAT")
@@ -876,8 +1022,6 @@ class Settings(BaseSettings):
             "REDIS_URL",
             "AWS_SECRET_ACCESS_KEY",
             "SECRET_KEY",
-            "CLERK_SECRET_KEY",
-            "CLERK_WEBHOOK_SECRET",
             "REPLICATE_API_TOKEN",
             "FASHN_API_KEY",
             "SMTP_PASSWORD",

@@ -1,0 +1,36 @@
+{
+  "_doc": "EventBridge cron expressions (UTC) for keeping the GradFiT endpoint warm during peak hours. Adjust the cron strings before applying via Terraform or `aws events put-rule`.",
+  "rules": [
+    {
+      "name": "gradfit-warmup-india-evening",
+      "description": "Wake the endpoint 5 minutes before peak Indian browsing window (8:30pm-12am IST).",
+      "schedule_expression": "cron(25 14 * * ? *)",
+      "comment": "Triggers daily at 14:25 UTC = 19:55 IST (5min lead-in)."
+    },
+    {
+      "name": "gradfit-warmup-us-evening",
+      "description": "Wake before US East prime time (7pm-11pm ET).",
+      "schedule_expression": "cron(55 22 * * ? *)",
+      "comment": "Triggers daily at 22:55 UTC = 18:55 ET (5min lead-in)."
+    },
+    {
+      "name": "gradfit-keepalive-ping",
+      "description": "Send a /ping every 10 minutes during the active windows so SageMaker autoscaler does not drop to zero mid-session.",
+      "schedule_expression": "rate(10 minutes)",
+      "comment": "Lambda checks active window in code and short-circuits outside peak hours."
+    }
+  ],
+  "warmup_payload_s3": {
+    "bucket_env": "GRADFIT_WARMUP_BUCKET",
+    "key": "warmup/warmup-input.json",
+    "content": {
+      "task": "mask",
+      "inputs": {
+        "image_url": "s3://${GRADFIT_WARMUP_BUCKET}/warmup/tiny-person.png",
+        "output_s3_prefix": "s3://${GRADFIT_WARMUP_BUCKET}/warmup/out/"
+      },
+      "options": {"target": "person"},
+      "request_id": "warmup"
+    }
+  }
+}

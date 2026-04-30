@@ -1,13 +1,12 @@
-"""GradFiT - Super-resolution via Real-ESRGAN (BSD-3).
+"""GradFiT - Super-resolution via Real-ESRGAN.
 
-Wraps the Replicate-hosted ``nightmareai/real-esrgan`` model. Identical
-contract to ``face_restore.restore_face``: best-effort, returns
-``(final_url, meta)`` and never raises into the orchestrator.
+Real-ESRGAN now lives inside the bundled SageMaker serving container.
+This module is a thin shim that calls the ``upscale`` task on the FLUX
+endpoint. The Replicate-hosted variant has been retired -- keeping a
+single inference surface keeps cost forecasting simple.
 
-Real-ESRGAN ships with an optional ``face_enhance`` flag that runs
-GFPGAN internally. We default it OFF because the postprocessor pipeline
-runs face restore as its own step right before this one -- enabling
-both produces over-processed, plastic-looking skin.
+Identical contract to ``face_restore.restore_face``: best-effort,
+returns ``(final_url, meta)`` and never raises into the orchestrator.
 """
 
 from __future__ import annotations
@@ -16,13 +15,22 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 
 from app.config import settings
-from app.services.postprocess import (
-    coerce_replicate_output_to_url,
-    download_and_reupload,
+from app.services.sagemaker import (
+    SagemakerInferenceError,
+    build_output_prefix,
+    invoke_sync,
+    s3_uri_to_public_url,
 )
-from app.services.replicate import get_replicate_service
 
 logger = logging.getLogger(__name__)
+
+
+def _materialise(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    if url.startswith("s3://"):
+        return s3_uri_to_public_url(url)
+    return url
 
 
 def upscale_image(image_url: str) -> Tuple[Optional[str], Dict[str, Any]]:
@@ -31,63 +39,54 @@ def upscale_image(image_url: str) -> Tuple[Optional[str], Dict[str, Any]]:
     if not image_url:
         return None, {"step": "upscale", "status": "skipped_empty_url"}
 
-    model_ref = (settings.UPSCALE_MODEL or "").strip()
-    if not model_ref:
-        return None, {"step": "upscale", "status": "skipped_no_model"}
-
     factor = max(2, min(4, int(settings.UPSCALE_FACTOR or 2)))
+    output_prefix = build_output_prefix(scope="postprocess/upscale", scope_id="shared")
 
     inputs: Dict[str, Any] = {
-        "image": image_url,
+        "image_url": image_url,
         "scale": factor,
-        "face_enhance": bool(settings.UPSCALE_FACE_ENHANCE),
+        "output_s3_prefix": output_prefix,
     }
 
     try:
-        raw_output = get_replicate_service().run_model(model_ref, inputs)
-    except Exception as exc:
-        logger.warning("upscale: Real-ESRGAN call failed (%s)", exc)
+        result = invoke_sync(
+            task="upscale",
+            inputs=inputs,
+            options={"return_metadata": True},
+        )
+    except SagemakerInferenceError as exc:
+        logger.warning("upscale: SageMaker call failed (%s)", exc)
         return None, {
             "step": "upscale",
             "status": "failed",
-            "model": model_ref,
+            "error": str(exc),
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("upscale: unexpected failure (%s)", exc)
+        return None, {
+            "step": "upscale",
+            "status": "failed",
             "error": str(exc),
         }
 
-    replicate_url = coerce_replicate_output_to_url(raw_output)
-    if not replicate_url:
-        logger.warning("upscale: Real-ESRGAN returned no URL (raw=%r)", raw_output)
+    payload = result.payload or {}
+    raw_url = payload.get("image_url") or payload.get("image") or payload.get("output")
+    final_url = _materialise(raw_url if isinstance(raw_url, str) else None)
+    if not final_url:
+        logger.warning("upscale: serving container returned no URL (%r)", payload)
         return None, {
             "step": "upscale",
             "status": "failed",
-            "model": model_ref,
             "error": "empty_output",
-        }
-
-    try:
-        final_url, _ = download_and_reupload(
-            source_url=replicate_url,
-            role="upscale",
-        )
-    except Exception as exc:
-        logger.warning("upscale: re-upload failed (%s); keeping Replicate URL", exc)
-        return replicate_url, {
-            "step": "upscale",
-            "status": "ok_no_rehost",
-            "model": model_ref,
-            "factor": factor,
-            "face_enhance": inputs["face_enhance"],
-            "replicate_url": replicate_url,
-            "rehost_error": str(exc),
         }
 
     return final_url, {
         "step": "upscale",
         "status": "ok",
-        "model": model_ref,
+        "engine": "real-esrgan",
         "factor": factor,
-        "face_enhance": inputs["face_enhance"],
-        "replicate_url": replicate_url,
+        "elapsed_ms": result.elapsed_ms,
+        "inference_id": result.inference_id,
     }
 
 

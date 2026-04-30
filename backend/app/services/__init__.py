@@ -1,6 +1,6 @@
 # Services package
 """
-AULTER.AI - Services
+GradFiT - Services
 Business logic and external service integrations
 """
 

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"E:\\\\ALTER.ai\\\\ml-pipeline\\\\serving\" -Recurse -Force 2>$null | Where-Object { $_.Extension -eq \".py\" })",
+      "PowerShell(Get-ChildItem -Path \"frontend\\\\components\\\\closet\" -File | Select-Object -ExpandProperty Name; \"---\"; Get-ChildItem -Path \"frontend\\\\app\\\\\\(studios\\)\\\\account\\\\closet\" -Recurse -File | Select-Object -ExpandProperty FullName)",
+      "PowerShell(Get-ChildItem -Path \"backend\\\\app\\\\docs\" -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name; \"---\"; Get-ChildItem -Path \".\" -Filter \"*.md\" -File | Select-Object -ExpandProperty Name)",
+      "WebSearch"
+    ]
+  }
+}

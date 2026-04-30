@@ -9,7 +9,8 @@
     minImageSize: 120, minDisplaySize: 80, debounceDelay: 300,
     duplicateCheckWindow: 5000, clickAnimationDuration: 900,
     detectionThreshold: 4, maxScanDepth: 10,
-    appUrl: 'http://localhost:3000', maxSidebarGarments: 10, maxHistoryItems: 20,
+    appUrl: (globalThis.GRADFIT_CONFIG && globalThis.GRADFIT_CONFIG.appUrl) || 'http://localhost:3000',
+    maxSidebarGarments: 10, maxHistoryItems: 20,
     // Must comfortably exceed the SW's 180s poll window in background.js
     // (Fashn's own max_wait is also 180s). 210s gives ~30s headroom for
     // the final sendResponse round-trip so we never cut the SW off early.
@@ -859,9 +860,12 @@
   }
 
   function buildSidebarHTML() {
+    var logoSrc = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL)
+      ? chrome.runtime.getURL('assets/icon-48.png')
+      : 'assets/icon-48.png';
     return '<div class="tryon-sidebar-header">' +
       '<div class="tryon-sidebar-logo">' +
-        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7L12 12L22 7L12 2Z" fill="url(#sg1)" stroke="url(#sg2)" stroke-width="2"/><path d="M2 17L12 22L22 17" stroke="url(#sg2)" stroke-width="2"/><path d="M2 12L12 17L22 12" stroke="url(#sg2)" stroke-width="2"/><defs><linearGradient id="sg1" x1="2" y1="2" x2="22" y2="12"><stop stop-color="#8B5CF6"/><stop offset="1" stop-color="#3B82F6"/></linearGradient><linearGradient id="sg2" x1="2" y1="12" x2="22" y2="22"><stop stop-color="#8B5CF6"/><stop offset="1" stop-color="#3B82F6"/></linearGradient></defs></svg>' +
+        '<img src="' + logoSrc + '" alt="GradFiT" width="22" height="22" style="border-radius:6px;display:block;" />' +
         '<span class="tryon-sidebar-title">GradFiT</span>' +
         '<span class="tryon-sidebar-badge">Quick</span>' +
       '</div>' +
@@ -1356,12 +1360,14 @@
         tryon_id: quickTryContext.tryonId || undefined,
         url: quickTryContext.garmentId ? undefined : quickTryContext.sourceUrl || undefined,
       };
+      var affiliateHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + token,
+      };
+      affiliateHeaders[GRADFIT_SOURCE_HEADER] = GRADFIT_SOURCE_VALUE;
       fetch(GRADFIT_API_URL + '/api/affiliate/click', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + token,
-        },
+        headers: affiliateHeaders,
         body: JSON.stringify(body),
       })
       .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
@@ -1389,8 +1395,16 @@
     });
   }
 
-  // Shared API origin -- kept in sync with gradfit-floating.js.
-  var GRADFIT_API_URL = 'http://localhost:8000';
+  // Shared API origin -- pulled from build-time config (see config.js).
+  var GRADFIT_API_URL =
+    (globalThis.GRADFIT_CONFIG && globalThis.GRADFIT_CONFIG.apiUrl) ||
+    'http://localhost:8000';
+  var GRADFIT_SOURCE_HEADER =
+    (globalThis.GRADFIT_CONFIG && globalThis.GRADFIT_CONFIG.sourceHeader) ||
+    'X-GradFiT-Source';
+  var GRADFIT_SOURCE_VALUE =
+    (globalThis.GRADFIT_CONFIG && globalThis.GRADFIT_CONFIG.sourceValue) ||
+    'extension';
 
   // Cross-tab combo sync: when the user adds a garment from one tab,
   // every other open tab's sidebar should update immediately. We
@@ -1611,20 +1625,66 @@
     quickPreviewInFlight.clear();
   }
 
+  // Last token we pushed into chrome.storage. Used to skip redundant
+  // writes (and to detect a real change, which needs a snapshot refresh
+  // on the background side so /api/auth/me is re-fetched with the new
+  // token instead of the stale cached snapshot).
+  var _lastSyncedAuthToken = null;
+
   function syncGradfitAuthToken() {
     try {
       var appOrigin = new URL(CONFIG.appUrl).origin;
       if (window.location.origin !== appOrigin) return;
 
       var token = window.localStorage.getItem('auth_token') || '';
+      if (token === _lastSyncedAuthToken) return;
+      _lastSyncedAuthToken = token;
+
       if (token) {
         safeStorageSet({ tryon_user_token: token });
+        // Force the background to re-fetch the user snapshot with the
+        // new token. Without this, the cached snapshot (which may have
+        // been populated with an expired token) keeps driving Quick Try
+        // checks and the user stays stuck on "Save a default photo".
+        if (isExtensionContextValid()) {
+          try {
+            chrome.runtime.sendMessage({ action: 'refreshUserSnapshot', force: true }, function() {
+              if (chrome.runtime.lastError) { /* SW may be asleep; ignore */ }
+            });
+          } catch (_e) { markContextInvalidated(); }
+        }
       } else {
         safeStorageRemove('tryon_user_token');
       }
     } catch (_e) {
       // no-op: this should never interrupt content script behavior
     }
+  }
+
+  // Keep the extension's copy of the JWT in lockstep with the web app's
+  // localStorage. A single one-shot sync at init() is not enough: the
+  // web app can refresh / rotate the token silently (login, logout,
+  // another tab signing out) while the content script just sits there
+  // and the extension ends up with a stale Bearer token that the API
+  // rejects with 401 forever.
+  function startAuthTokenSyncWatchers() {
+    try {
+      var appOrigin = new URL(CONFIG.appUrl).origin;
+      if (window.location.origin !== appOrigin) return;
+
+      // Cross-tab updates: fires when another tab writes to localStorage.
+      window.addEventListener('storage', function(e) {
+        if (!e || e.key === 'auth_token' || e.key === null) syncGradfitAuthToken();
+      });
+      // Same-tab updates: the tab that did the write does NOT receive the
+      // 'storage' event, so cover login-in-current-tab and silent refresh
+      // with visibility + focus + a short poll.
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') syncGradfitAuthToken();
+      });
+      window.addEventListener('focus', syncGradfitAuthToken);
+      setInterval(syncGradfitAuthToken, 5000);
+    } catch (_e) { /* best effort */ }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -1652,6 +1712,7 @@
     initDone = true;
     console.log('[GradFiT] Content script initializing...');
     syncGradfitAuthToken();
+    startAuthTokenSyncWatchers();
     processImages();
     setupMutationObserver();
     setupIntersectionObserver();

@@ -19,7 +19,10 @@ from app.api.routes import (
     affiliate,
     auth,
     billing,
+    brand_dna,
     garments,
+    looks,
+    studios,
     tryon,
     upload,
     user,
@@ -142,6 +145,9 @@ app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
 app.include_router(webhook.router, tags=["webhooks"])
 app.include_router(billing.router)
 app.include_router(affiliate.router)
+app.include_router(studios.router)
+app.include_router(brand_dna.router)
+app.include_router(looks.router)
 
 
 @app.get("/")

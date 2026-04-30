@@ -45,6 +45,7 @@ class TryOnResponse(BaseModel):
     status: TryOnStatus
     stage1_result_url: Optional[str] = None
     result_image_url: Optional[str] = None
+    preview_image_url: Optional[str] = None
     result_model_url: Optional[str] = None
     result_turntable_url: Optional[str] = None
     quality_gate_score: Optional[float] = None
@@ -72,6 +73,7 @@ class TryOnStatusResponse(BaseModel):
     extracted_garment_url: Optional[str] = None
     stage1_result_url: Optional[str] = None
     result_image_url: Optional[str] = None
+    preview_image_url: Optional[str] = None
     result_model_url: Optional[str] = None
     result_turntable_url: Optional[str] = None
     quality_gate_score: Optional[float] = None

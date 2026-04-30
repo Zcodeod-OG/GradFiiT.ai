@@ -1,0 +1,30 @@
+{
+  "_doc": "SageMaker Inference Recommender Default job spec. Compares ml.g5.xlarge / 2xlarge / 4xlarge for the GradFiT serving image. Run via `aws sagemaker create-inference-recommendations-job`.",
+  "JobName": "gradfit-serving-recommender",
+  "JobType": "Default",
+  "RoleArn": "arn:aws:iam::ACCOUNT_ID:role/SageMakerExecutionRole",
+  "InputConfig": {
+    "ContainerConfig": {
+      "Domain": "COMPUTER_VISION",
+      "Task": "IMAGE_GENERATION",
+      "Framework": "PYTORCH",
+      "PayloadConfig": {
+        "SamplePayloadUrl": "s3://gradfit-prod/recommender/sample-payloads.tar.gz",
+        "SupportedContentTypes": ["application/json"]
+      },
+      "SupportedInstanceTypes": [
+        "ml.g5.xlarge",
+        "ml.g5.2xlarge",
+        "ml.g5.4xlarge"
+      ]
+    },
+    "ModelPackageVersionArn": "arn:aws:sagemaker:us-east-1:ACCOUNT_ID:model-package/gradfit-serving/1"
+  },
+  "JobDescription": "Right-size GradFiT serving for FLUX + ControlNet + SAM2 + Real-ESRGAN.",
+  "StoppingConditions": {
+    "MaxInvocations": 200,
+    "ModelLatencyThresholds": [
+      {"Percentile": "P95", "ValueInMilliseconds": 25000}
+    ]
+  }
+}

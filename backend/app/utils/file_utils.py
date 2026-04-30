@@ -1,5 +1,5 @@
 """
-AULTER.AI - File Utility Functions
+GradFiT - File Utility Functions
 Helper functions for file handling and validation
 """
 

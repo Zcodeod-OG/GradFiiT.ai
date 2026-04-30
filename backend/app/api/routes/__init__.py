@@ -1,6 +1,6 @@
 # API routes package
 """
-AULTER.AI - API Routes
+GradFiT - API Routes
 All API endpoint routers
 """
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { Suspense, useEffect } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CheckCircle2, ArrowRight } from "lucide-react"
@@ -14,6 +14,14 @@ import { useAuth } from "@/lib/auth"
 // "you're in" screen and refreshes their session so the new tier
 // shows up immediately.
 export default function BillingSuccessPage() {
+  return (
+    <Suspense fallback={null}>
+      <BillingSuccessInner />
+    </Suspense>
+  )
+}
+
+function BillingSuccessInner() {
   const router = useRouter()
   const search = useSearchParams()
   const { loadUser } = useAuth()

@@ -47,6 +47,7 @@ def process_tryon_task(
     cached_smart_crop_url: str | None = None,
     cached_face_url: str | None = None,
     cached_face_embedding: list | None = None,
+    source: str | None = None,
 ):
     """Celery task for processing virtual try-on."""
     try:
@@ -65,6 +66,7 @@ def process_tryon_task(
             cached_smart_crop_url=cached_smart_crop_url,
             cached_face_url=cached_face_url,
             cached_face_embedding=cached_face_embedding,
+            source=source,
         )
     except Exception as exc:
         if self.request.retries >= self.max_retries:

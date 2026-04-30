@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Logo } from "@/components/brand/Logo"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 
@@ -43,16 +44,16 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16 md:h-20">
           <motion.a
             href="/"
-            className="flex items-center gap-3"
+            className="flex items-center"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <div className="size-9 md:size-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_8px_20px_oklch(0.56_0.13_250/0.28)]">
-              <span className="text-white font-display font-bold text-sm md:text-base">G</span>
-            </div>
-            <span className="text-xl md:text-2xl font-display font-bold tracking-tight text-foreground">
-              GradFiT
-            </span>
+            <Logo
+              size={40}
+              priority
+              withWordmark
+              wordmarkClassName="text-xl md:text-2xl"
+            />
           </motion.a>
 
           <div className="hidden md:flex items-center gap-8">
