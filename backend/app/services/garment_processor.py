@@ -11,8 +11,9 @@ Handles garment image processing via Replicate API:
 import logging
 import io
 import hashlib
-from typing import Optional, List
+from typing import Optional, List, Dict
 
+import httpx
 from PIL import Image
 import numpy as np
 
@@ -204,6 +205,93 @@ class GarmentProcessor:
         except Exception as e:
             logger.error(f"classify_garment failed: {e}")
             return "upper_body"  # safe default
+
+
+    def extract_palette(
+        self,
+        image_url: str,
+        max_colors: int = 5,
+    ) -> List[Dict[str, object]]:
+        """Extract dominant colors from a garment image via Pillow median-cut.
+
+        Returns a list of ``{"hex": "#RRGGBB", "weight": float}`` items
+        ordered by frequency. Near-white and near-black pixels are dropped
+        first to avoid the result being dominated by transparent /
+        background-removed pixels rendered as white. Weights are
+        normalised so the returned list sums to ~1.0.
+
+        Safe defaults: returns ``[]`` on any download / decode / quantise
+        failure. The recommender treats an empty palette as "no signal"
+        rather than failing the outfit.
+        """
+        cache = get_cache_service()
+        cache_key = self._key("palette_v1", f"{image_url}:{max_colors}")
+        cached = cache.get_json(cache_key)
+        if isinstance(cached, list) and cached:
+            return cached  # type: ignore[return-value]
+
+        try:
+            with httpx.Client(timeout=15.0, follow_redirects=True) as client:
+                response = client.get(image_url)
+                response.raise_for_status()
+            image = Image.open(io.BytesIO(response.content))
+        except Exception as exc:
+            logger.warning("extract_palette: download failed for %s: %s", image_url, exc)
+            return []
+
+        try:
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+            # Downscale for speed — palette quality is not affected by
+            # the smaller pixel grid at 256px.
+            image.thumbnail((256, 256), Image.Resampling.LANCZOS)
+            # Quantise to a small fixed palette; getcolors returns
+            # (count, color_index) tuples we then map back to RGB.
+            quantised = image.quantize(
+                colors=16, method=Image.Quantize.MEDIANCUT
+            )
+            counts = quantised.getcolors() or []
+            palette_bytes = quantised.getpalette() or []
+        except Exception as exc:
+            logger.warning("extract_palette: quantise failed: %s", exc)
+            return []
+
+        # Map palette indices to (count, (r, g, b)).
+        rgb_counts: List[tuple[int, tuple[int, int, int]]] = []
+        for count, index in counts:
+            base = index * 3
+            if base + 2 >= len(palette_bytes):
+                continue
+            r, g, b = (
+                palette_bytes[base],
+                palette_bytes[base + 1],
+                palette_bytes[base + 2],
+            )
+            # Drop near-white (background residue from remove-bg) and
+            # near-black (often shadow / fabric folds, not the brand
+            # color). Thresholds tuned by eye on real garments.
+            if r > 240 and g > 240 and b > 240:
+                continue
+            if r < 12 and g < 12 and b < 12:
+                continue
+            rgb_counts.append((count, (r, g, b)))
+
+        if not rgb_counts:
+            return []
+
+        rgb_counts.sort(reverse=True, key=lambda pair: pair[0])
+        top = rgb_counts[:max_colors]
+        total = float(sum(count for count, _ in top)) or 1.0
+        palette: List[Dict[str, object]] = [
+            {
+                "hex": "#{:02X}{:02X}{:02X}".format(r, g, b),
+                "weight": round(count / total, 4),
+            }
+            for count, (r, g, b) in top
+        ]
+
+        cache.set_json(cache_key, palette, settings.ARTIFACT_CACHE_TTL_SECONDS)
+        return palette
 
 
 _garment_processor: Optional[GarmentProcessor] = None

@@ -18,10 +18,13 @@ from app.schemas.garment import (
     GarmentCreate,
     GarmentSuggestion as GarmentSuggestionSchema,
     GarmentUpdate,
+    OutfitRecommendation as OutfitRecommendationSchema,
+    OutfitRecommendationsResponse,
 )
 from app.api.deps import get_current_active_user
 from app.services.garment_runner import run_garment_preprocess
 from app.services.garment_suggestions import suggest_pairings
+from app.services.outfit_recommender import recommend_outfits
 from app.services.storage import get_storage
 from app.services.tasks import process_garment_task
 
@@ -121,6 +124,48 @@ def get_garments(
         query = query.filter(Garment.saved_to_closet.is_(True))
     garments = query.offset(skip).limit(limit).all()
     return [_serialise_garment(g) for g in garments]
+
+
+@router.get(
+    "/outfits/recommendations",
+    response_model=OutfitRecommendationsResponse,
+)
+def get_outfit_recommendations(
+    limit: int = 10,
+    anchor_id: Optional[int] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Return ranked outfits composed from the user's saved closet.
+
+    The recommender lives in ``app.services.outfit_recommender``; this
+    route is a thin wrapper that enforces auth, presigns garment URLs,
+    and validates the ``limit`` window. Registered before the
+    ``/{garment_id}`` route so the literal ``outfits`` prefix isn't
+    coerced as an int garment id.
+    """
+    if limit < 1 or limit > 30:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="limit must be between 1 and 30",
+        )
+    suggestions = recommend_outfits(
+        db,
+        user_id=current_user.id,
+        limit=limit,
+        anchor_garment_id=anchor_id,
+    )
+    outfits: List[OutfitRecommendationSchema] = []
+    for s in suggestions:
+        outfits.append(
+            OutfitRecommendationSchema(
+                garments=[_serialise_garment(g) for g in s.garments],
+                score=s.score,
+                reason=s.reason,
+                palette=list(s.palette),
+            )
+        )
+    return OutfitRecommendationsResponse(outfits=outfits)
 
 
 @router.get("/{garment_id}", response_model=GarmentSchema)

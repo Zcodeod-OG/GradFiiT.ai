@@ -8,6 +8,7 @@ synchronous fallback execution.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from app.database import SessionLocal
 from app.models.garment import Garment
@@ -55,6 +56,19 @@ def run_garment_preprocess(
                 exc,
             )
             garment.garment_type = "upper_body"
+
+        # Dominant color palette. Best-effort — a failure here doesn't
+        # fail the preprocess; the recommender treats a missing palette
+        # as "no color signal" and falls back to type/category rules.
+        try:
+            palette = processor.extract_palette(
+                garment.extracted_image_url or garment.image_url
+            )
+            if palette:
+                garment.color_palette = palette
+                garment.palette_extracted_at = datetime.now(timezone.utc)
+        except Exception as exc:
+            logger.warning("Garment %s palette extraction failed: %s", garment_id, exc)
 
         garment.preprocess_status = "ready"
         garment.preprocess_error = None

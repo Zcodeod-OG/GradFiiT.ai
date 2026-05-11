@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Any, List, Optional
 
 
 class GarmentBase(BaseModel):
@@ -24,6 +24,11 @@ class GarmentUpdate(BaseModel):
     source_url: Optional[str] = None
 
 
+class PaletteEntry(BaseModel):
+    hex: str
+    weight: float
+
+
 class Garment(GarmentBase):
     id: int
     user_id: int
@@ -36,6 +41,9 @@ class Garment(GarmentBase):
     preprocess_error: Optional[str] = None
     saved_to_closet: bool
     source_url: Optional[str] = None
+    color_palette: Optional[List[PaletteEntry]] = None
+    palette_extracted_at: Optional[datetime] = None
+    attributes: Optional[dict[str, Any]] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -52,4 +60,22 @@ class GarmentSuggestion(Garment):
 
     score: float
     reason: str
+
+
+class OutfitRecommendation(BaseModel):
+    """A composed outfit returned by the recommender.
+
+    `garments` is the ordered list of pieces (anchor first); `palette`
+    is up to 5 hex colours summarising the composite look. The UI uses
+    `reason` as a one-line caption beneath the outfit thumbnail.
+    """
+
+    garments: List[Garment]
+    score: float
+    reason: str
+    palette: List[str]
+
+
+class OutfitRecommendationsResponse(BaseModel):
+    outfits: List[OutfitRecommendation]
 

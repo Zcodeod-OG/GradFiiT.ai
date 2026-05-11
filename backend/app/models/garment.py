@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -27,6 +27,15 @@ class Garment(Base):
     # product page). Passed through from the Chrome extension's Quick Try
     # flow and used by the affiliate rewriter to build a "Buy this" link.
     source_url = Column(String, nullable=True)
+
+    # Dominant color palette extracted on preprocess. List of
+    # {"hex": "#RRGGBB", "weight": 0..1} dicts. Powers the closet's
+    # color swatches and the outfit recommender's palette harmony score.
+    color_palette = Column(JSON, nullable=True)
+    palette_extracted_at = Column(DateTime(timezone=True), nullable=True)
+    # Open-ended attribute bag for future enrichment (fabric, season,
+    # LLM tags). Frontend must tolerate missing keys.
+    attributes = Column(JSON, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
