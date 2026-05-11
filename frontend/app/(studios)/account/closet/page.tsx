@@ -165,7 +165,9 @@ export default function ClosetPage() {
   }, [garments, search, categoryFilter, category, sort]);
 
   const handleTryOn = (garment: Garment) => {
-    router.push(`/try?garmentId=${garment.id}`);
+    // /studios/tryon lives inside the (studios) route group so the user
+    // keeps the StudioRail (with the Closet link) on the way back.
+    router.push(`/studios/tryon?garmentId=${garment.id}`);
   };
 
   const handleDelete = async (garment: Garment) => {

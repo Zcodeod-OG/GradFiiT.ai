@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Menu, X } from "lucide-react"
+import { LogOut, Menu, Shirt, Sparkles, WandSparkles, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/brand/Logo"
+import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const { isAuthenticated, logout } = useAuth()
 
   useEffect(() => {
     const handleScroll = () => {
@@ -21,12 +23,25 @@ export function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  const navLinks = [
+  // Two link sets so the same Navbar works on marketing routes (logged
+  // out: Features / Demo / How / Pricing → Get Started) and on
+  // authenticated entry points like /try (logged in: Closet / Try-On /
+  // Outfits → Log out). Studios pages have their own StudioRail and
+  // typically don't render this Navbar.
+  const marketingLinks = [
     { href: "#features", label: "Features" },
     { href: "#demo", label: "Demo" },
     { href: "#how-it-works", label: "How It Works" },
     { href: "#pricing", label: "Pricing" },
   ]
+
+  const authedLinks = [
+    { href: "/studios/tryon", label: "Try-On", icon: Sparkles },
+    { href: "/account/closet", label: "Closet", icon: Shirt },
+    { href: "/studios/stylist", label: "Stylist", icon: WandSparkles },
+  ]
+
+  const navLinks = isAuthenticated ? authedLinks : marketingLinks
 
   return (
     <motion.nav
@@ -79,31 +94,64 @@ export function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center gap-3">
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.5 }}
-            >
-              <Link href="/login">
-                <Button
-                  variant="ghost"
-                  className="text-foreground hover:bg-secondary"
+            {isAuthenticated ? (
+              <>
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5 }}
                 >
-                  Login
-                </Button>
-              </Link>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.6 }}
-            >
-              <Link href="/try">
-                <Button className="h-10 px-5">
-                  Get Started
-                </Button>
-              </Link>
-            </motion.div>
+                  <Link href="/account/closet">
+                    <Button className="h-10 px-5">
+                      <Shirt className="size-4" />
+                      Open Closet
+                    </Button>
+                  </Link>
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.6 }}
+                >
+                  <Button
+                    variant="ghost"
+                    className="text-foreground hover:bg-secondary"
+                    onClick={logout}
+                  >
+                    <LogOut className="size-4" />
+                    Log out
+                  </Button>
+                </motion.div>
+              </>
+            ) : (
+              <>
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5 }}
+                >
+                  <Link href="/login">
+                    <Button
+                      variant="ghost"
+                      className="text-foreground hover:bg-secondary"
+                    >
+                      Login
+                    </Button>
+                  </Link>
+                </motion.div>
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.6 }}
+                >
+                  <Link href="/try">
+                    <Button className="h-10 px-5">
+                      Get Started
+                    </Button>
+                  </Link>
+                </motion.div>
+              </>
+            )}
           </div>
 
           <motion.button
@@ -173,33 +221,72 @@ export function Navbar() {
                   </motion.a>
                 ))}
                 <div className="pt-4 space-y-3 border-t border-border">
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: navLinks.length * 0.1 }}
-                  >
-                    <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}>
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-start text-foreground"
+                  {isAuthenticated ? (
+                    <>
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: navLinks.length * 0.1 }}
                       >
-                        Login
-                      </Button>
-                    </Link>
-                  </motion.div>
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: navLinks.length * 0.1 + 0.1 }}
-                  >
-                    <Link href="/try" onClick={() => setIsMobileMenuOpen(false)}>
-                      <Button
-                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                        <Link
+                          href="/account/closet"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                        >
+                          <Button className="w-full justify-start bg-primary hover:bg-primary/90 text-primary-foreground">
+                            <Shirt className="size-4" />
+                            Open Closet
+                          </Button>
+                        </Link>
+                      </motion.div>
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: navLinks.length * 0.1 + 0.1 }}
                       >
-                        Get Started
-                      </Button>
-                    </Link>
-                  </motion.div>
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start text-foreground"
+                          onClick={() => {
+                            logout()
+                            setIsMobileMenuOpen(false)
+                          }}
+                        >
+                          <LogOut className="size-4" />
+                          Log out
+                        </Button>
+                      </motion.div>
+                    </>
+                  ) : (
+                    <>
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: navLinks.length * 0.1 }}
+                      >
+                        <Link href="/login" onClick={() => setIsMobileMenuOpen(false)}>
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start text-foreground"
+                          >
+                            Login
+                          </Button>
+                        </Link>
+                      </motion.div>
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: navLinks.length * 0.1 + 0.1 }}
+                      >
+                        <Link href="/try" onClick={() => setIsMobileMenuOpen(false)}>
+                          <Button
+                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                          >
+                            Get Started
+                          </Button>
+                        </Link>
+                      </motion.div>
+                    </>
+                  )}
                 </div>
               </div>
             </motion.div>

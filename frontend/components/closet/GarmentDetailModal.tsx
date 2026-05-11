@@ -206,7 +206,9 @@ export function GarmentDetailModal({
   const handleTry = () => {
     if (!garment) return;
     onClose();
-    router.push(`/try?garmentId=${garment.id}`);
+    // Keep the user inside the (studios) shell so they can navigate
+    // back to Closet via StudioRail without losing context.
+    router.push(`/studios/tryon?garmentId=${garment.id}`);
   };
 
   const palette = garment?.color_palette ?? [];
