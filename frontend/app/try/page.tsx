@@ -748,11 +748,12 @@ function TryOnPageInner() {
       }, 3000)
 
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Failed to start generation"))
+      const message = getApiErrorMessage(err, "Failed to start generation")
+      setError(message)
       setIsProcessing(false)
       setEstimatedTimeRemaining(0)
       if (estimatedTimeIntervalRef.current) clearInterval(estimatedTimeIntervalRef.current)
-      toast.error("Failed to start generation")
+      toast.error(message)
     }
   }
 

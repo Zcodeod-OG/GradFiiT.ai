@@ -1,14 +1,21 @@
-import axios from "axios";
+import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import type { SubscriptionTier, TryOnMode } from "@/lib/plans";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// 60s covers a warm round-trip comfortably. Render's free-tier cold starts
+// (30–60s) are handled by the retry path below — the first attempt is allowed
+// to fail fast on ECONNABORTED so the retry can succeed against a now-warm
+// instance.
 export const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 60_000,
   headers: {
     "Content-Type": "application/json",
   },
 });
+
+type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
 
 // Add auth token to every request
 api.interceptors.request.use((config) => {
@@ -21,17 +28,36 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+const isColdStartFailure = (error: AxiosError): boolean => {
+  if (error.code === "ECONNABORTED") return true;
+  if (!error.response) return true; // network error, DNS fail, connection refused
+  const status = error.response.status;
+  return status === 502 || status === 503 || status === 504;
+};
+
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error: AxiosError) => {
     if (typeof window !== "undefined") {
       const status = error?.response?.status;
-      const detail = String(error?.response?.data?.detail || "");
+      const detail = String(
+        (error?.response?.data as { detail?: string } | undefined)?.detail || ""
+      );
       if (status === 401 && detail.toLowerCase().includes("validate credentials")) {
         localStorage.removeItem("auth_token");
         localStorage.removeItem("auth-storage");
       }
     }
+
+    const config = error.config as RetriableConfig | undefined;
+    if (config && !config._retried && isColdStartFailure(error)) {
+      config._retried = true;
+      await delay(1500);
+      return api.request(config);
+    }
+
     return Promise.reject(error);
   }
 );

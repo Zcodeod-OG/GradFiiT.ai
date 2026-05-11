@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { authApi } from "./api";
+import { authApi, tryonApi } from "./api";
 import type { SubscriptionTier, TryOnMode } from "./plans";
 
 type User = {
@@ -60,6 +60,9 @@ export const useAuth = create<AuthStore>()(
         localStorage.setItem("auth_token", access_token);
         set({ token: access_token, isAuthenticated: true });
         await get().loadUser();
+        // Fire-and-forget warmup so the SageMaker try-on endpoint is hot by
+        // the time the user reaches /try. Server debounces to once per 60s.
+        void tryonApi.warmup().catch(() => {});
       },
 
       register: async (payload) => {

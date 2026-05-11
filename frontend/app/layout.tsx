@@ -4,6 +4,7 @@ import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
+import { BackendWarmup } from "@/components/BackendWarmup"
 import "./globals.css"
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -34,6 +35,7 @@ export default function RootLayout({
           className={`${plusJakarta.variable} ${spaceGrotesk.variable} antialiased bg-background text-foreground`}
       >
       <ThemeProvider>
+        <BackendWarmup />
         {children}
         <Analytics />
         <Toaster />

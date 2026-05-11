@@ -13,7 +13,7 @@ export const getApiErrorMessage = (
 ): string => {
   if (axios.isAxiosError<ApiErrorPayload>(error)) {
     if (!error.response) {
-      return "Cannot reach API server. Please start the backend and try again."
+      return "Server is waking up. This can take up to a minute on the first request — please try again."
     }
 
     const { data, status } = error.response

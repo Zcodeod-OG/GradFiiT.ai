@@ -92,7 +92,16 @@ class Settings(BaseSettings):
         default=10,
         description="Maximum overflow connections"
     )
-    
+
+    RUN_MIGRATIONS_ON_STARTUP: bool = Field(
+        default=False,
+        description=(
+            "If true, run `alembic upgrade head` during FastAPI startup. "
+            "Intended for environments without shell access (e.g. Render "
+            "free tier). Idempotent but adds a few seconds to boot."
+        ),
+    )
+
     # ==================== Redis Settings ====================
     
     REDIS_URL: str = Field(

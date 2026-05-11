@@ -1,6 +1,7 @@
 import logging
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Callable
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -44,6 +45,23 @@ async def lifespan(app: FastAPI):
 
     Used for startup/shutdown tasks such as database connectivity checks.
     """
+    # Optional: apply pending Alembic migrations before serving traffic.
+    # Toggled via RUN_MIGRATIONS_ON_STARTUP so local dev / tests aren't
+    # surprised. Intended for hosts without shell access (Render free tier).
+    if settings.RUN_MIGRATIONS_ON_STARTUP:
+        try:
+            from alembic.config import Config
+            from alembic import command
+
+            backend_dir = Path(__file__).resolve().parent.parent
+            cfg = Config(str(backend_dir / "alembic.ini"))
+            logger.info("Applying Alembic migrations (upgrade head)...")
+            command.upgrade(cfg, "head")
+            logger.info("Alembic migrations applied successfully.")
+        except Exception as exc:
+            logger.exception("Alembic startup migration failed: %s", exc)
+            raise  # fail boot loudly; Render keeps prior deploy serving
+
     # Startup
     try:
         with engine.connect() as connection:
