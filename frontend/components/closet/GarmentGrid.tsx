@@ -12,6 +12,7 @@ type GarmentGridProps = {
   onTryOn: (garment: Garment) => void;
   onEdit: (garment: Garment) => void;
   onDelete: (garment: Garment) => void;
+  onOpen?: (garment: Garment) => void;
 };
 
 export function GarmentGrid({
@@ -19,6 +20,7 @@ export function GarmentGrid({
   onTryOn,
   onEdit,
   onDelete,
+  onOpen,
 }: GarmentGridProps) {
   return (
     <motion.div
@@ -35,6 +37,7 @@ export function GarmentGrid({
             onTryOn={onTryOn}
             onEdit={onEdit}
             onDelete={onDelete}
+            onOpen={onOpen}
           />
         </motion.div>
       ))}

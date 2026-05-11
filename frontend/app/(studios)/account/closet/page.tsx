@@ -6,13 +6,16 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { AddGarmentDialog } from "@/components/closet/AddGarmentDialog";
+import { CategorySidebar, type GarmentTypeKey } from "@/components/closet/CategorySidebar";
 import { ClosetFilters, type SortOption } from "@/components/closet/ClosetFilters";
 import { ClosetTabs, type ClosetTab } from "@/components/closet/ClosetTabs";
 import { EditGarmentDialog } from "@/components/closet/EditGarmentDialog";
 import { EmptyState } from "@/components/closet/EmptyState";
+import { GarmentDetailModal } from "@/components/closet/GarmentDetailModal";
 import { GarmentGrid } from "@/components/closet/GarmentGrid";
 import { LooksGallery } from "@/components/closet/LooksGallery";
 import { OutfitBuilder } from "@/components/closet/OutfitBuilder";
+import { OutfitsGallery } from "@/components/closet/OutfitsGallery";
 import { StudioShell } from "@/components/studios/StudioShell";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +27,7 @@ import {
 } from "@/lib/api";
 
 const PROCESSING_REFRESH_MS = 5000;
+const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export default function ClosetPage() {
   const router = useRouter();
@@ -37,11 +41,14 @@ export default function ClosetPage() {
   const [renderingLookIds, setRenderingLookIds] = useState<Set<number>>(
     () => new Set()
   );
+  const [detail, setDetail] = useState<Garment | null>(null);
 
   const [search, setSearch] = useState("");
-  const [garmentType, setGarmentType] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<GarmentTypeKey>("all");
   const [category, setCategory] = useState<string>("all");
   const [sort, setSort] = useState<SortOption>("newest");
+  // Bump when the closet changes meaningfully so OutfitsGallery refetches.
+  const [outfitsRefreshKey, setOutfitsRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +103,27 @@ export default function ClosetPage() {
     return opts;
   }, [garments]);
 
+  const sidebarCounts = useMemo<Record<GarmentTypeKey, number>>(() => {
+    const counts: Record<GarmentTypeKey, number> = {
+      all: garments.length,
+      recent: 0,
+      upper_body: 0,
+      lower_body: 0,
+      full_body: 0,
+      outerwear: 0,
+      accessory: 0,
+    };
+    const now = Date.now();
+    for (const g of garments) {
+      const t = g.garment_type as GarmentTypeKey | null;
+      if (t && t in counts) counts[t] += 1;
+      if (g.created_at && now - new Date(g.created_at).getTime() < RECENT_WINDOW_MS) {
+        counts.recent += 1;
+      }
+    }
+    return counts;
+  }, [garments]);
+
   const garmentLookup = useMemo(() => {
     const map = new Map<number, Garment>();
     for (const g of garments) map.set(g.id, g);
@@ -104,8 +132,14 @@ export default function ClosetPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const now = Date.now();
     let list = garments.filter((g) => {
-      if (garmentType !== "all" && g.garment_type !== garmentType) return false;
+      if (categoryFilter === "recent") {
+        if (!g.created_at) return false;
+        if (now - new Date(g.created_at).getTime() > RECENT_WINDOW_MS) return false;
+      } else if (categoryFilter !== "all" && g.garment_type !== categoryFilter) {
+        return false;
+      }
       if (category !== "all" && g.category !== category) return false;
       if (!q) return true;
       return (
@@ -128,10 +162,10 @@ export default function ClosetPage() {
       list = [...list].sort((a, b) => a.name.localeCompare(b.name));
     }
     return list;
-  }, [garments, search, garmentType, category, sort]);
+  }, [garments, search, categoryFilter, category, sort]);
 
   const handleTryOn = (garment: Garment) => {
-    router.push(`/studios/tryon?garmentId=${garment.id}`);
+    router.push(`/try?garmentId=${garment.id}`);
   };
 
   const handleDelete = async (garment: Garment) => {
@@ -143,6 +177,7 @@ export default function ClosetPage() {
     }
     const previous = garments;
     setGarments((prev) => prev.filter((g) => g.id !== garment.id));
+    setOutfitsRefreshKey((k) => k + 1);
     try {
       await garmentsApi.delete(garment.id);
       toast.success("Removed.");
@@ -157,6 +192,7 @@ export default function ClosetPage() {
 
   const handleCreated = (garment: Garment) => {
     setGarments((prev) => [garment, ...prev]);
+    setOutfitsRefreshKey((k) => k + 1);
   };
 
   const handleSaved = (garment: Garment) => {
@@ -180,8 +216,6 @@ export default function ClosetPage() {
 
   const handleLookEdit = (look: Look) => {
     setEditingLook(look);
-    // OutfitBuilder picks up `editingLook` and hydrates its slots; we
-    // don't have to re-mount it.
   };
 
   const handleLookDelete = async (look: Look) => {
@@ -217,8 +251,6 @@ export default function ClosetPage() {
       const tryonId = res.data.data?.tryon_id;
       if (!tryonId) throw new Error("No tryon id returned");
 
-      // Poll status until the result lands; then refetch the look so
-      // the cover preview updates from the server-derived image_url.
       const deadline = Date.now() + 5 * 60 * 1000;
       while (Date.now() < deadline) {
         const statusRes = await tryonApi.getStatus(tryonId);
@@ -259,7 +291,7 @@ export default function ClosetPage() {
       eyebrow="Workspace 05"
       numeral="05"
       title="Closet"
-      description="Save your pieces, build looks, and try them on in seconds."
+      description="Save your pieces, build outfits, and try them on in seconds."
       actions={
         tab === "garments" ? (
           <Button onClick={() => setAddOpen(true)} className="rounded-full">
@@ -286,34 +318,46 @@ export default function ClosetPage() {
           />
 
           {tab === "garments" ? (
-            <>
-              <ClosetFilters
-                search={search}
-                onSearchChange={setSearch}
-                garmentType={garmentType}
-                onGarmentTypeChange={setGarmentType}
-                category={category}
-                onCategoryChange={setCategory}
-                sort={sort}
-                onSortChange={setSort}
-                categoryOptions={categoryOptions}
-                totalCount={totalCount}
-                filteredCount={filteredCount}
+            <div className="flex flex-col gap-6 lg:flex-row">
+              <CategorySidebar
+                selected={categoryFilter}
+                onSelect={setCategoryFilter}
+                counts={sidebarCounts}
               />
-              {filteredCount === 0 ? (
-                <EmptyState
-                  onAdd={() => setAddOpen(true)}
-                  variant="no-results"
+
+              <div className="flex flex-1 flex-col gap-4 min-w-0">
+                <ClosetFilters
+                  search={search}
+                  onSearchChange={setSearch}
+                  category={category}
+                  onCategoryChange={setCategory}
+                  sort={sort}
+                  onSortChange={setSort}
+                  categoryOptions={categoryOptions}
+                  totalCount={totalCount}
+                  filteredCount={filteredCount}
                 />
-              ) : (
-                <GarmentGrid
-                  garments={filtered}
-                  onTryOn={handleTryOn}
-                  onEdit={setEditing}
-                  onDelete={handleDelete}
-                />
-              )}
-            </>
+                {filteredCount === 0 ? (
+                  <EmptyState
+                    onAdd={() => setAddOpen(true)}
+                    variant="no-results"
+                  />
+                ) : (
+                  <GarmentGrid
+                    garments={filtered}
+                    onTryOn={handleTryOn}
+                    onEdit={setEditing}
+                    onDelete={handleDelete}
+                    onOpen={setDetail}
+                  />
+                )}
+              </div>
+            </div>
+          ) : tab === "outfits" ? (
+            <OutfitsGallery
+              refreshKey={outfitsRefreshKey}
+              onLookSaved={handleLookSaved}
+            />
           ) : (
             <div className="flex flex-col gap-10">
               <OutfitBuilder
@@ -356,6 +400,7 @@ export default function ClosetPage() {
         onClose={() => setEditing(null)}
         onSaved={handleSaved}
       />
+      <GarmentDetailModal garment={detail} onClose={() => setDetail(null)} />
     </StudioShell>
   );
 }

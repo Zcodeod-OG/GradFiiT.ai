@@ -166,6 +166,11 @@ export type GarmentPreprocessStatus =
   | "ready"
   | "failed";
 
+export type PaletteEntry = {
+  hex: string;
+  weight: number;
+};
+
 export type Garment = {
   id: number;
   user_id: number;
@@ -181,8 +186,22 @@ export type Garment = {
   preprocess_error: string | null;
   saved_to_closet: boolean;
   source_url: string | null;
+  color_palette: PaletteEntry[] | null;
+  palette_extracted_at: string | null;
+  attributes: Record<string, unknown> | null;
   created_at: string;
   updated_at: string | null;
+};
+
+export type OutfitRecommendation = {
+  garments: Garment[];
+  score: number;
+  reason: string;
+  palette: string[];
+};
+
+export type OutfitRecommendationsResponse = {
+  outfits: OutfitRecommendation[];
 };
 
 export const garmentsApi = {
@@ -221,6 +240,13 @@ export const garmentsApi = {
     api.get<GarmentSuggestion[]>(
       `/api/garments/${id}/suggestions?limit=${limit}`
     ),
+  recommendOutfits: (limit = 10, anchorId?: number) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (anchorId != null) params.set("anchor_id", String(anchorId));
+    return api.get<OutfitRecommendationsResponse>(
+      `/api/garments/outfits/recommendations?${params.toString()}`
+    );
+  },
 };
 
 export type GarmentSuggestion = Garment & {

@@ -205,6 +205,12 @@ export default function TryOnPage() {
 function TryOnPageInner() {
   const [personImage, setPersonImage] = useState<ImageInfo | null>(null)
   const [garmentImage, setGarmentImage] = useState<ImageInfo | null>(null)
+  // When set, the user arrived via /try?garmentId=… from the closet.
+  // We skip the upload/create step in handleGenerate and pass this id
+  // straight to tryonApi.generate. Cleared once the user changes the
+  // garment slot manually.
+  const [preselectedGarmentId, setPreselectedGarmentId] = useState<number | null>(null)
+  const [preselectedGarmentName, setPreselectedGarmentName] = useState<string | null>(null)
   const [resultImage, setResultImage] = useState<string | null>(null)
   const [resultModelUrl, setResultModelUrl] = useState<string | null>(null)
   const [resultTurntableUrl, setResultTurntableUrl] = useState<string | null>(null)
@@ -317,6 +323,44 @@ function TryOnPageInner() {
       setTryonMode(user.preferred_tryon_mode)
     }
   }, [searchParams, garmentImage, isAuthenticated, user?.preferred_tryon_mode])
+
+  // Handle ?garmentId= deep-link from the closet detail modal. We fetch
+  // the garment for its presigned image URL + name, then mark the slot
+  // as preselected so handleGenerate skips the upload+create step.
+  useEffect(() => {
+    const raw = searchParams.get("garmentId")
+    if (!raw) return
+    const id = Number(raw)
+    if (!Number.isFinite(id) || id <= 0) return
+    if (preselectedGarmentId === id) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await garmentsApi.get(id)
+        if (cancelled) return
+        const garment = res.data
+        setPreselectedGarmentId(garment.id)
+        setPreselectedGarmentName(garment.name)
+        setGarmentImage({
+          url: garment.extracted_image_url || garment.image_url,
+          // Empty File is fine — handleGenerate skips uploadGarment when
+          // preselectedGarmentId is set.
+          file: new File([], `${garment.name || "garment"}.jpg`),
+          width: 0,
+          height: 0,
+          size: 0,
+        })
+      } catch {
+        if (!cancelled) {
+          toast.error("Could not load that garment from your closet.")
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -474,6 +518,10 @@ function TryOnPageInner() {
         toast.success("Person image uploaded successfully!")
       } else {
         setGarmentImage(imageInfo)
+        // Manual upload replaces any closet-linked garment, so we must
+        // upload + create a new Garment row instead of reusing the id.
+        setPreselectedGarmentId(null)
+        setPreselectedGarmentName(null)
         toast.success("Garment image uploaded successfully!")
       }
       setError(null)
@@ -665,25 +713,35 @@ function TryOnPageInner() {
         personImageUrl = personUpload.data.url
       }
 
-      // Step 2: Upload garment and create garment record
+      // Step 2: Upload garment and create garment record — unless the
+      // user deep-linked from the closet, in which case we already have
+      // a Garment row and can skip straight to generate.
       setCurrentStep(1)
       setProcessingProgress(15)
-      setStatusMessage("Processing garment...")
-      const garmentUpload = await uploadApi.uploadGarment(garmentImage.file)
-      const garmentRecord = await garmentsApi.create({
-        name: garmentImage.file.name || "Garment",
-        image_url: garmentUpload.data.url,
-        s3_key: garmentUpload.data.s3_key,
-        saved_to_closet: false,
-      })
-      setResultGarmentId(garmentRecord.data.id)
+      let garmentIdToUse: number
+      if (preselectedGarmentId != null) {
+        setStatusMessage("Using garment from your closet...")
+        garmentIdToUse = preselectedGarmentId
+        setResultGarmentId(preselectedGarmentId)
+      } else {
+        setStatusMessage("Processing garment...")
+        const garmentUpload = await uploadApi.uploadGarment(garmentImage.file)
+        const garmentRecord = await garmentsApi.create({
+          name: garmentImage.file.name || "Garment",
+          image_url: garmentUpload.data.url,
+          s3_key: garmentUpload.data.s3_key,
+          saved_to_closet: false,
+        })
+        garmentIdToUse = garmentRecord.data.id
+        setResultGarmentId(garmentRecord.data.id)
+      }
 
       // Step 3: Start try-on generation
       setCurrentStep(2)
       setProcessingProgress(25)
       setStatusMessage("Starting AI pipeline...")
       const generateResponse = await tryonApi.generate(
-        garmentRecord.data.id,
+        garmentIdToUse,
         personImageUrl,
         quality,
         tryonMode
@@ -767,6 +825,10 @@ function TryOnPageInner() {
       setGarmentImage(null)
       setGarmentRotation(0)
       setGarmentZoom(1)
+      // Manually clearing the garment slot also discards the closet
+      // deep-link, so a fresh upload creates a new Garment row.
+      setPreselectedGarmentId(null)
+      setPreselectedGarmentName(null)
       toast.info("Garment image removed")
     }
   }
@@ -1194,8 +1256,13 @@ function TryOnPageInner() {
           {/* Right Column - Garment Photo */}
           <Card>
             <CardContent className="p-6">
-              <h2 className="text-lg font-semibold mb-4">Garment</h2>
-              
+              <h2 className="text-lg font-semibold mb-2">Garment</h2>
+              {preselectedGarmentId != null && preselectedGarmentName ? (
+                <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-primary">
+                  From your closet · {preselectedGarmentName}
+                </div>
+              ) : null}
+
               {!garmentImage ? (
                 <>
                   <div

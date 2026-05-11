@@ -1,10 +1,10 @@
 "use client";
 
-import { Layers, Shirt } from "lucide-react";
+import { Layers, Shirt, WandSparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type ClosetTab = "garments" | "looks";
+export type ClosetTab = "garments" | "outfits" | "looks";
 
 type ClosetTabsProps = {
   value: ClosetTab;
@@ -25,8 +25,14 @@ export function ClosetTabs({
         active={value === "garments"}
         onClick={() => onChange("garments")}
         icon={<Shirt className="size-3.5" />}
-        label="Garments"
+        label="Wardrobe"
         count={garmentCount}
+      />
+      <TabButton
+        active={value === "outfits"}
+        onClick={() => onChange("outfits")}
+        icon={<WandSparkles className="size-3.5" />}
+        label="Outfits"
       />
       <TabButton
         active={value === "looks"}
@@ -50,7 +56,7 @@ function TabButton({
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
-  count: number;
+  count?: number;
 }) {
   return (
     <button
@@ -65,14 +71,16 @@ function TabButton({
     >
       {icon}
       {label}
-      <span
-        className={cn(
-          "rounded-full px-1.5 text-[10px] font-mono",
-          active ? "bg-background/20" : "bg-muted/60"
-        )}
-      >
-        {count}
-      </span>
+      {count !== undefined ? (
+        <span
+          className={cn(
+            "rounded-full px-1.5 text-[10px] font-mono",
+            active ? "bg-background/20" : "bg-muted/60"
+          )}
+        >
+          {count}
+        </span>
+      ) : null}
     </button>
   );
 }
