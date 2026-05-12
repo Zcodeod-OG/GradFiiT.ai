@@ -600,7 +600,7 @@ class Settings(BaseSettings):
     # ==================== File Upload Settings ====================
     
     MAX_UPLOAD_SIZE: int = Field(
-        default=10 * 1024 * 1024,  # 10 MB
+        default=12 * 1024 * 1024,  # 12 MB — matches onboarding PhotoWizard max
         description="Maximum file upload size in bytes"
     )
     

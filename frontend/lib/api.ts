@@ -15,6 +15,15 @@ export const api = axios.create({
   },
 });
 
+/**
+ * Multipart uploads hit the backend while it may still be cold-starting on
+ * Render (~30–90s), then the server streams to S3 and runs synchronous
+ * preprocessing (input gate, pose, face crop, CLIP embedding). The default
+ * 60s client timeout fires before that finishes → "timeout of 60000ms exceeded".
+ * Same ceiling helps avatar/build and large image uploads on /try.
+ */
+const HEAVY_BACKEND_TIMEOUT_MS = 180_000;
+
 type RetriableConfig = InternalAxiosRequestConfig & { _retried?: boolean };
 
 // Add auth token to every request
@@ -116,7 +125,10 @@ export const userApi = {
     fit_preference?: string;
     notes?: string;
     force_rebuild?: boolean;
-  }) => api.post("/api/user/avatar/build", data),
+  }) =>
+    api.post("/api/user/avatar/build", data, {
+      timeout: HEAVY_BACKEND_TIMEOUT_MS,
+    }),
 
   // Persistent canonical "person photo" -- upload once, reused across
   // /try, the Quick Try card, and the Chrome extension overlay.
@@ -130,7 +142,10 @@ export const userApi = {
     return api.post<{ success: boolean; data: PersonPhotoData }>(
       "/api/user/person-photo",
       formData,
-      { headers: { "Content-Type": "multipart/form-data" } }
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: HEAVY_BACKEND_TIMEOUT_MS,
+      }
     );
   },
   deletePersonPhoto: () =>
@@ -146,6 +161,7 @@ export const uploadApi = {
     formData.append("file", file);
     return api.post("/api/upload/image", formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: HEAVY_BACKEND_TIMEOUT_MS,
     });
   },
 
@@ -154,6 +170,7 @@ export const uploadApi = {
     formData.append("file", file);
     return api.post("/api/upload/garment", formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: HEAVY_BACKEND_TIMEOUT_MS,
     });
   },
 };

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import io
 import logging
+import math
 from datetime import datetime, timezone
+from typing import Any, Mapping
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_active_user
+from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import AvatarBuildRequest
@@ -20,6 +24,58 @@ from app.services.tryon_input_gate import get_tryon_input_gate
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/user", tags=["user"])
+
+
+def _normalize_face_embedding(embedding: Any) -> list[float] | None:
+    """Persist embeddings as plain Python floats for JSON compatibility."""
+    if embedding is None:
+        return None
+    try:
+        return [float(x) for x in embedding]
+    except (TypeError, ValueError):
+        return None
+
+
+def _json_safe_gate_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
+    """Strip numpy scalars / bound huge strings before JSON persistence."""
+
+    def _walk(obj: Any, depth: int = 0) -> Any:
+        if depth > 14:
+            return None
+        if obj is None:
+            return None
+        if isinstance(obj, bool):
+            return obj
+        if isinstance(obj, int) and not isinstance(obj, bool):
+            return obj
+        if isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return None
+            return obj
+        if isinstance(obj, str):
+            return obj if len(obj) <= 6000 else obj[:5997] + "..."
+        if isinstance(obj, bytes):
+            return None
+        if isinstance(obj, Mapping):
+            out: dict[str, Any] = {}
+            for k, v in list(obj.items())[:100]:
+                key = str(k)[:160]
+                out[key] = _walk(v, depth + 1)
+            return out
+        if isinstance(obj, (list, tuple)):
+            return [_walk(v, depth + 1) for v in list(obj)[:200]]
+        if hasattr(obj, "item"):
+            try:
+                return _walk(obj.item(), depth + 1)
+            except Exception:
+                pass
+        try:
+            return float(obj)
+        except (TypeError, ValueError):
+            return str(obj)[:6000]
+
+    cleaned = _walk(dict(metrics))
+    return cleaned if isinstance(cleaned, dict) else {"_truncated": True}
 
 
 def _sign_for_browser(url: str | None) -> str | None:
@@ -252,10 +308,18 @@ async def upload_person_photo(
             detail="Photo must be a JPEG, PNG, or WebP image",
         )
 
+    raw = await file.read()
+    if len(raw) > settings.MAX_UPLOAD_SIZE:
+        max_mb = settings.MAX_UPLOAD_SIZE / (1024 * 1024)
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Photo exceeds maximum size ({max_mb:.0f}MB)",
+        )
+
     storage = get_storage()
     try:
         s3_key, url = storage.upload_file(
-            file.file, file.filename or "photo.jpg", current_user.id
+            io.BytesIO(raw), file.filename or "photo.jpg", current_user.id
         )
     except Exception as exc:
         logger.exception("Failed to upload person photo for user %s", current_user.id)
@@ -288,7 +352,9 @@ async def upload_person_photo(
     try:
         face_url = face_processor.crop_face_url(smart_crop_url or url)
         if face_url:
-            face_embedding = face_processor.embed_face(smart_crop_url or url)
+            face_embedding = _normalize_face_embedding(
+                face_processor.embed_face(smart_crop_url or url)
+            )
     except Exception as exc:  # pragma: no cover - best-effort caching
         logger.warning("FaceProcessor caching failed for user %s: %s", current_user.id, exc)
 
@@ -298,10 +364,10 @@ async def upload_person_photo(
     current_user.default_person_face_url = face_url
     current_user.default_person_face_embedding = face_embedding
     current_user.default_person_input_gate_metrics = {
-        "passed": gate_result.passed,
-        "reasons": list(gate_result.reasons),
-        "smart_cropped": gate_result.smart_cropped,
-        "metrics": dict(gate_result.metrics),
+        "passed": bool(gate_result.passed),
+        "reasons": [str(r)[:2000] for r in (gate_result.reasons or [])][:50],
+        "smart_cropped": bool(gate_result.smart_cropped),
+        "metrics": _json_safe_gate_metrics(gate_result.metrics or {}),
     }
     current_user.default_person_uploaded_at = datetime.now(timezone.utc)
 
