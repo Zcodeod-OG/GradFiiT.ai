@@ -21,16 +21,26 @@
   const STORAGE_KEYS = {
     snapshot: 'gradfit_user_snapshot',
     token: 'tryon_user_token',
+    activeAppUrl: 'gradfit_active_app_url',
+    activeApiUrl: 'gradfit_active_api_url',
   };
   // URLs are injected at build time via globalThis.GRADFIT_CONFIG (see
   // chrome-extension/config.js). Falling back to localhost keeps the
   // dev unpacked workflow zero-setup.
-  const APP_URL =
+  //
+  // The build-time URLs are only used as a fallback - the content
+  // script writes `gradfit_active_app_url` / `gradfit_active_api_url`
+  // into chrome.storage when the user signs in on a known origin, and
+  // we prefer those so dev sessions route to localhost backends and
+  // prod sessions route to gradfit.tech / Render.
+  const FALLBACK_APP_URL =
     (globalThis.GRADFIT_CONFIG && globalThis.GRADFIT_CONFIG.appUrl) ||
     'http://localhost:3000';
-  const API_URL =
+  const FALLBACK_API_URL =
     (globalThis.GRADFIT_CONFIG && globalThis.GRADFIT_CONFIG.apiUrl) ||
     'http://localhost:8000';
+  let APP_URL = FALLBACK_APP_URL;
+  let API_URL = FALLBACK_API_URL;
   const SOURCE_HEADER = 'X-GradFiT-Source';
   const SOURCE_VALUE = 'extension';
   const withSourceHeader = (headers) => ({
@@ -404,9 +414,21 @@
   async function loadSnapshot() {
     if (!isExtensionContextValid()) { markContextInvalidated(); return; }
     try {
-      const stored = await chrome.storage.local.get([STORAGE_KEYS.snapshot, STORAGE_KEYS.token]);
+      const stored = await chrome.storage.local.get([
+        STORAGE_KEYS.snapshot,
+        STORAGE_KEYS.token,
+        STORAGE_KEYS.activeAppUrl,
+        STORAGE_KEYS.activeApiUrl,
+      ]);
       snapshot = stored[STORAGE_KEYS.snapshot] || null;
       token = stored[STORAGE_KEYS.token] || null;
+      // Sync the active app+api URLs from whichever origin the JWT was
+      // captured on. Fall back to the build-time config only when the
+      // user hasn't signed in yet (no pin yet).
+      const pinnedApp = stored[STORAGE_KEYS.activeAppUrl];
+      const pinnedApi = stored[STORAGE_KEYS.activeApiUrl];
+      APP_URL = (typeof pinnedApp === 'string' && pinnedApp ? pinnedApp : FALLBACK_APP_URL).replace(/\/$/, '');
+      API_URL = (typeof pinnedApi === 'string' && pinnedApi ? pinnedApi : FALLBACK_API_URL).replace(/\/$/, '');
       renderButton();
     } catch (err) {
       markContextInvalidated();
@@ -681,7 +703,12 @@
       chrome.storage.onChanged.addListener((changes, area) => {
         if (!isExtensionContextValid()) { markContextInvalidated(); return; }
         if (area !== 'local' || !hasMounted) return;
-        if (changes[STORAGE_KEYS.snapshot] || changes[STORAGE_KEYS.token]) {
+        if (
+          changes[STORAGE_KEYS.snapshot] ||
+          changes[STORAGE_KEYS.token] ||
+          changes[STORAGE_KEYS.activeAppUrl] ||
+          changes[STORAGE_KEYS.activeApiUrl]
+        ) {
           void loadSnapshot();
         }
       });

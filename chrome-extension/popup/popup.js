@@ -23,9 +23,34 @@ const CONFIG = {
     userToken: "tryon_user_token",
     snapshot: "gradfit_user_snapshot",
     recentTryons: "gradfit_recent_tryons",
+    activeAppUrl: "gradfit_active_app_url",
   },
   maxRecent: 6,
 };
+
+// Active app URL = whichever origin (prod or localhost) the content
+// script last copied the JWT from. Lets the popup's "Open app" / "View
+// history" / etc. links open the user's actual environment instead of
+// always hard-jumping to production.
+let _activeAppUrl = CONFIG.appUrl;
+async function loadActiveAppUrl() {
+  try {
+    const stored = await chrome.storage.local.get([CONFIG.storageKeys.activeAppUrl]);
+    const pinned = stored[CONFIG.storageKeys.activeAppUrl];
+    if (typeof pinned === "string" && pinned) {
+      _activeAppUrl = pinned.replace(/\/$/, "");
+    }
+  } catch (_e) {
+    // Fall back to the build-time CONFIG.appUrl already in _activeAppUrl.
+  }
+}
+function appUrl(path = "") {
+  const base = _activeAppUrl || CONFIG.appUrl || "";
+  if (!path) return base;
+  return path.startsWith("/") || path.startsWith("?") || path.startsWith("#")
+    ? `${base}${path}`
+    : `${base}/${path}`;
+}
 
 let snapshot = null;
 let unsubscribeStorage = null;
@@ -218,8 +243,8 @@ function applyRecent(items) {
 
     node.addEventListener("click", () => {
       const target = item.tryonId
-        ? `${CONFIG.appUrl}/?tryon=${item.tryonId}`
-        : `${CONFIG.appUrl}/`;
+        ? appUrl(`/?tryon=${item.tryonId}`)
+        : appUrl("/");
       chrome.tabs.create({ url: target });
     });
 
@@ -290,33 +315,33 @@ function bindStorageListener() {
 
 function bindActions() {
   $("managePhotoBtn")?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${CONFIG.appUrl}/?settings=photo` });
+    chrome.tabs.create({ url: appUrl("/?settings=photo") });
   });
 
   $("openAppBtn")?.addEventListener("click", () => {
-    chrome.tabs.create({ url: CONFIG.appUrl });
+    chrome.tabs.create({ url: appUrl() });
   });
 
   $("viewAllBtn")?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${CONFIG.appUrl}/?tab=history` });
+    chrome.tabs.create({ url: appUrl("/?tab=history") });
   });
 
   $("pricingBtn")?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${CONFIG.appUrl}/#pricing` });
+    chrome.tabs.create({ url: appUrl("/#pricing") });
   });
 
   $("settingsBtn")?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${CONFIG.appUrl}/?settings=true` });
+    chrome.tabs.create({ url: appUrl("/?settings=true") });
   });
 
   $("helpBtn")?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${CONFIG.appUrl}/help` });
+    chrome.tabs.create({ url: appUrl("/help") });
   });
 
   $("authPill")?.addEventListener("click", async () => {
     const stored = await chrome.storage.local.get(CONFIG.storageKeys.userToken);
     if (!stored[CONFIG.storageKeys.userToken]) {
-      chrome.tabs.create({ url: `${CONFIG.appUrl}/login` });
+      chrome.tabs.create({ url: appUrl("/login") });
     }
   });
 
@@ -394,6 +419,9 @@ async function bindStyleHighlightsToggle() {
 }
 
 async function init() {
+  // Resolve the active app URL first so every button bound below
+  // points to the right environment from the first click.
+  await loadActiveAppUrl();
   bindActions();
   bindStorageListener();
   await bindStyleHighlightsToggle();

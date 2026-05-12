@@ -37,6 +37,8 @@ const CONFIG = {
     styleProfile: 'gradfit_style_profile',
     styleProfileAt: 'gradfit_style_profile_at',
     styleHighlightsEnabled: 'gradfit_style_highlights_enabled',
+    activeAppUrl: 'gradfit_active_app_url',
+    activeApiUrl: 'gradfit_active_api_url',
   },
   snapshotMaxAgeMs: 60 * 1000,
   styleProfileMaxAgeMs: 5 * 60 * 1000,
@@ -46,6 +48,39 @@ const CONFIG = {
   sourceHeader: _GRADFIT.sourceHeader,
   sourceValue: _GRADFIT.sourceValue,
 };
+
+/**
+ * Resolve the API base URL to use for the next backend call.
+ *
+ * The content script pins `gradfit_active_api_url` to whichever origin
+ * the JWT was synced from (dev = http://localhost:8000, prod = the
+ * Render URL). If nothing is pinned yet (fresh install, signed-out
+ * user, very old content-script version) we fall back to the build-time
+ * `CONFIG.apiUrl` so existing prod flows keep working unchanged.
+ */
+async function getApiBase() {
+  try {
+    const stored = await chrome.storage.local.get([CONFIG.storageKeys.activeApiUrl]);
+    const pinned = stored[CONFIG.storageKeys.activeApiUrl];
+    if (typeof pinned === 'string' && pinned) return pinned.replace(/\/$/, '');
+  } catch (_e) {
+    // chrome.storage can throw if the SW context is being torn down;
+    // fall back to the build-time URL rather than failing the request.
+  }
+  return (CONFIG.apiUrl || '').replace(/\/$/, '');
+}
+
+/** Same as getApiBase() but for the web app URL (used for "Open app"
+ *  navigation links). Pinned alongside the API URL whenever the user
+ *  signs in. */
+async function getAppBase() {
+  try {
+    const stored = await chrome.storage.local.get([CONFIG.storageKeys.activeAppUrl]);
+    const pinned = stored[CONFIG.storageKeys.activeAppUrl];
+    if (typeof pinned === 'string' && pinned) return pinned.replace(/\/$/, '');
+  } catch (_e) {}
+  return (CONFIG.appUrl || '').replace(/\/$/, '');
+}
 
 /** Attach the GradFiT extension source flag to fetch headers. The
  *  backend Provider Router uses this to land extension traffic on
@@ -272,9 +307,10 @@ function extractDomain(url) {
 /**
  * Build TryOn.AI URL with parameters
  */
-function buildTryOnUrl(data) {
+async function buildTryOnUrl(data) {
   try {
-    const url = new URL(`${CONFIG.appUrl}/try`);
+    const appBase = await getAppBase();
+    const url = new URL(`${appBase}/try`);
     
     // Add image URL (required)
     if (data.imageUrl) {
@@ -309,7 +345,8 @@ function buildTryOnUrl(data) {
     return url.toString();
   } catch (error) {
     console.error('Error building TryOn URL:', error);
-    // Fallback to basic URL
+    // Fallback to basic URL (best-effort static base if SW storage
+    // read failed; production URL is fine as a last resort).
     return `${CONFIG.appUrl}/try?image=${encodeURIComponent(data.imageUrl || '')}`;
   }
 }
@@ -447,6 +484,7 @@ async function handleQuickTryOn(data, sendResponse) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${authToken}`,
     });
+    const apiBase = await getApiBase();
 
     // 1. Register the garment so the backend has a stable garment_id.
     //    Preprocessing runs in a background thread server-side, so this
@@ -455,7 +493,7 @@ async function handleQuickTryOn(data, sendResponse) {
     //    throttle fetches or cold backend connections.
     const startedAt = Date.now();
     const garmentResult = await fetchJsonWithTimeout(
-      `${CONFIG.apiUrl}/api/garments/from-url`,
+      `${apiBase}/api/garments/from-url`,
       {
         method: 'POST',
         headers: authHeaders,
@@ -485,7 +523,7 @@ async function handleQuickTryOn(data, sendResponse) {
     //    queues the job on the backend and returns a tryon_id, so it
     //    should be very fast - 15s is plenty even under load.
     const genResult = await fetchJsonWithTimeout(
-      `${CONFIG.apiUrl}/api/tryon/generate`,
+      `${apiBase}/api/tryon/generate`,
       {
         method: 'POST',
         headers: authHeaders,
@@ -534,7 +572,7 @@ async function handleQuickTryOn(data, sendResponse) {
       await new Promise((r) => setTimeout(r, attempt === 1 ? 1500 : 2000));
       try {
         const statusResult = await fetchJsonWithTimeout(
-          `${CONFIG.apiUrl}/api/tryon/status/${tryonId}`,
+          `${apiBase}/api/tryon/status/${tryonId}`,
           { method: 'GET', headers: authHeaders },
           15000
         );
@@ -576,6 +614,7 @@ async function handleQuickTryOn(data, sendResponse) {
         lastStatus,
         lastStage,
         lastError,
+        apiBase,
       });
 
       sendResponse({ success: false, tryonId, error: finalError });
@@ -639,8 +678,9 @@ async function handleRegisterGarment(data, sendResponse) {
       return;
     }
 
+    const apiBase = await getApiBase();
     const garmentResult = await fetchJsonWithTimeout(
-      `${CONFIG.apiUrl}/api/garments/from-url`,
+      `${apiBase}/api/garments/from-url`,
       {
         method: 'POST',
         headers: {
@@ -732,6 +772,7 @@ async function handleComboTryOn(data, sendResponse) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${authToken}`,
     });
+    const apiBase = await getApiBase();
 
     // 1. Make sure every staged item has a garment_id. We register any
     //    that are still "draft" (URL only, no id yet). This lets the
@@ -748,7 +789,7 @@ async function handleComboTryOn(data, sendResponse) {
         return;
       }
       const reg = await fetchJsonWithTimeout(
-        `${CONFIG.apiUrl}/api/garments/from-url`,
+        `${apiBase}/api/garments/from-url`,
         {
           method: 'POST',
           headers: authHeaders,
@@ -780,7 +821,7 @@ async function handleComboTryOn(data, sendResponse) {
     //    runs (each step already adds latency).
     const startedAt = Date.now();
     const genResult = await fetchJsonWithTimeout(
-      `${CONFIG.apiUrl}/api/tryon/combo`,
+      `${apiBase}/api/tryon/combo`,
       {
         method: 'POST',
         headers: authHeaders,
@@ -820,7 +861,7 @@ async function handleComboTryOn(data, sendResponse) {
       await new Promise((r) => setTimeout(r, attempt === 1 ? 2000 : 2000));
       try {
         const statusResult = await fetchJsonWithTimeout(
-          `${CONFIG.apiUrl}/api/tryon/status/${tryonId}`,
+          `${apiBase}/api/tryon/status/${tryonId}`,
           { method: 'GET', headers: authHeaders },
           15000
         );
@@ -915,7 +956,7 @@ async function handleTryOnRequest(data, sendResponse) {
     });
 
     // Build URL
-    const tryOnUrl = buildTryOnUrl({
+    const tryOnUrl = await buildTryOnUrl({
       imageUrl: data.imageUrl,
       productTitle: data.productTitle || data.title,
       price: data.price,
@@ -1005,9 +1046,10 @@ async function fetchUserSnapshot(force = false) {
         Authorization: `Bearer ${token}`,
       });
 
+      const apiBase = await getApiBase();
       const [meResp, tierResp] = await Promise.allSettled([
-        fetchJsonWithTimeout(`${CONFIG.apiUrl}/api/auth/me`, { method: 'GET', headers }, 8000),
-        fetchJsonWithTimeout(`${CONFIG.apiUrl}/api/user/tier`, { method: 'GET', headers }, 8000),
+        fetchJsonWithTimeout(`${apiBase}/api/auth/me`, { method: 'GET', headers }, 8000),
+        fetchJsonWithTimeout(`${apiBase}/api/user/tier`, { method: 'GET', headers }, 8000),
       ]);
 
       // If the token is rejected, drop it plus the cached snapshot so
@@ -1139,8 +1181,9 @@ async function fetchStyleProfile(force = false) {
         Authorization: `Bearer ${token}`,
       });
 
+      const apiBase = await getApiBase();
       const result = await fetchJsonWithTimeout(
-        `${CONFIG.apiUrl}/api/garments/style-profile`,
+        `${apiBase}/api/garments/style-profile`,
         { method: 'GET', headers },
         8000
       );
@@ -1417,8 +1460,9 @@ chrome.action.onClicked.addListener(async (tab) => {
     
     if (remaining === 0) {
       // Open options page or show message
+      const appBase = await getAppBase();
       await chrome.tabs.create({
-        url: `${CONFIG.appUrl}/upgrade`,
+        url: `${appBase}/upgrade`,
       });
     }
     

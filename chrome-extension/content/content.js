@@ -105,6 +105,36 @@
     try { chrome.storage.local.get(key, cb); } catch (_e) { markContextInvalidated(); if (typeof cb === 'function') cb({}); }
   }
 
+  // Cached "active" app URL — the origin the JWT was last synced from.
+  // Lets the in-page sidebar's "Open app" / "Full try-on" fallbacks
+  // route to the user's actual environment (localhost vs production)
+  // even when this content script is running on a third-party retailer
+  // page that has no notion of which backend the extension targets.
+  var _activeAppUrl = CONFIG.appUrl;
+  function refreshActiveAppUrl() {
+    safeStorageGet('gradfit_active_app_url', function(stored) {
+      var pinned = stored && stored.gradfit_active_app_url;
+      if (typeof pinned === 'string' && pinned) {
+        _activeAppUrl = pinned.replace(/\/$/, '');
+      }
+    });
+  }
+  function activeAppUrl() {
+    return _activeAppUrl || CONFIG.appUrl;
+  }
+  // Pick up the pinned URL on script boot and again whenever it changes
+  // (covers the "sign in flips us from prod to localhost in another
+  // tab" case while this content script is already running).
+  refreshActiveAppUrl();
+  if (isExtensionContextValid()) {
+    try {
+      chrome.storage.onChanged.addListener(function(changes, area) {
+        if (area !== 'local') return;
+        if (changes.gradfit_active_app_url) refreshActiveAppUrl();
+      });
+    } catch (_e) { /* SW may be tearing down; harmless */ }
+  }
+
   var GARMENT_WORDS = ['dress','shirt','blouse','top','tee','t-shirt','tshirt','pants','trousers','jeans','denim','chinos','slacks','jacket','coat','blazer','cardigan','vest','sweater','sweatshirt','hoodie','pullover','jumper','skirt','shorts','suit','tuxedo','gown','romper','jumpsuit','overalls','leggings','tights','joggers','tracksuit','polo','henley','tank','camisole','bodysuit','kimono','kaftan','tunic','poncho','cape','parka','anorak','windbreaker','raincoat','trench','bikini','swimsuit','swimwear','lingerie','pajamas','robe','loungewear','activewear','sportswear','uniform','saree','sari','kurta','kurti','lehenga','salwar','abaya','hijab','dupatta','churidar'];
   var FOOTWEAR_WORDS = ['shoes','boots','sneakers','sandals','heels','flats','loafers','moccasins','oxfords','pumps','wedges','slippers','espadrilles','mules','clogs','trainers'];
   var ACCESSORY_WORDS = ['bag','handbag','purse','clutch','backpack','tote','hat','cap','beanie','scarf','gloves','belt','watch','jewelry','necklace','bracelet','earrings','sunglasses','tie','wallet','socks'];
@@ -1156,7 +1186,7 @@
     if (fullBtn) fullBtn.addEventListener('click', function() {
       if (sidebarState.selectedGarments.length === 0) return;
       var g = sidebarState.selectedGarments[sidebarState.selectedGarments.length - 1];
-      var url = CONFIG.appUrl + '/try?image=' + encodeURIComponent(g.imageUrl);
+      var url = activeAppUrl() + '/try?image=' + encodeURIComponent(g.imageUrl);
       if (g.title) url += '&title=' + encodeURIComponent(g.title);
       if (!safeSendMessage({ action: 'tryOnProduct', metadata: g, timestamp: Date.now() })) {
         window.open(url, '_blank');
@@ -1174,7 +1204,7 @@
     var appLink = document.getElementById('tryon-open-app-link');
     if (appLink) appLink.addEventListener('click', function(e) {
       e.preventDefault();
-      window.open(CONFIG.appUrl, '_blank');
+      window.open(activeAppUrl(), '_blank');
     });
 
     var comboTryBtn = document.getElementById('tryon-combo-try');
@@ -1567,13 +1597,15 @@
     label.textContent = 'Resolving best price...';
     link.setAttribute('href', quickTryContext.sourceUrl || '#');
 
-    safeStorageGet('tryon_user_token', function(stored) {
+    safeStorageGet(['tryon_user_token', 'gradfit_active_api_url'], function(stored) {
       var token = stored && stored.tryon_user_token;
       if (!token) {
         label.textContent = 'Open product page';
         link.setAttribute('href', quickTryContext.sourceUrl || '#');
         return;
       }
+      var apiBase = (stored && stored.gradfit_active_api_url) || GRADFIT_API_URL;
+      apiBase = apiBase.replace(/\/$/, '');
       var body = {
         garment_id: quickTryContext.garmentId || undefined,
         tryon_id: quickTryContext.tryonId || undefined,
@@ -1584,7 +1616,7 @@
         Authorization: 'Bearer ' + token,
       };
       affiliateHeaders[GRADFIT_SOURCE_HEADER] = GRADFIT_SOURCE_VALUE;
-      fetch(GRADFIT_API_URL + '/api/affiliate/click', {
+      fetch(apiBase + '/api/affiliate/click', {
         method: 'POST',
         headers: affiliateHeaders,
         body: JSON.stringify(body),
@@ -1850,17 +1882,45 @@
   // token instead of the stale cached snapshot).
   var _lastSyncedAuthToken = null;
 
+  // Allowed app origins (prod + localhost dev). Resolved lazily so the
+  // build-time GRADFIT_CONFIG injection always wins, with a fallback
+  // to CONFIG.appUrl if an older config.js is shipped.
+  function gradfitAppOrigins() {
+    var cfg = (typeof globalThis !== 'undefined' && globalThis.GRADFIT_CONFIG) || {};
+    if (Array.isArray(cfg.appOrigins) && cfg.appOrigins.length) return cfg.appOrigins;
+    try { return [new URL(CONFIG.appUrl).origin]; } catch (_e) { return []; }
+  }
+
+  // API base for a given app origin. The content script writes this
+  // into chrome.storage so the background SW knows whether to talk to
+  // the dev backend (when the user signed in on localhost) or the
+  // prod backend (when signed in on gradfit.tech).
+  function gradfitApiUrlForOrigin(origin) {
+    var cfg = (typeof globalThis !== 'undefined' && globalThis.GRADFIT_CONFIG) || {};
+    if (cfg.apiUrlByOrigin && cfg.apiUrlByOrigin[origin]) return cfg.apiUrlByOrigin[origin];
+    return cfg.apiUrl || CONFIG.apiUrl || '';
+  }
+
   function syncGradfitAuthToken() {
     try {
-      var appOrigin = new URL(CONFIG.appUrl).origin;
-      if (window.location.origin !== appOrigin) return;
+      var origin = window.location.origin;
+      var allowed = gradfitAppOrigins();
+      if (allowed.indexOf(origin) === -1) return;
 
       var token = window.localStorage.getItem('auth_token') || '';
       if (token === _lastSyncedAuthToken) return;
       _lastSyncedAuthToken = token;
 
       if (token) {
-        safeStorageSet({ tryon_user_token: token });
+        safeStorageSet({
+          tryon_user_token: token,
+          // Pin the active app+api URLs to whichever origin we picked
+          // the token up from. The background SW + popup read these to
+          // route every subsequent API call / "open app" link to the
+          // matching environment.
+          gradfit_active_app_url: origin,
+          gradfit_active_api_url: gradfitApiUrlForOrigin(origin),
+        });
         // Force the background to re-fetch the user snapshot with the
         // new token. Without this, the cached snapshot (which may have
         // been populated with an expired token) keeps driving Quick Try
@@ -1873,7 +1933,11 @@
           } catch (_e) { markContextInvalidated(); }
         }
       } else {
-        safeStorageRemove('tryon_user_token');
+        safeStorageRemove([
+          'tryon_user_token',
+          'gradfit_active_app_url',
+          'gradfit_active_api_url',
+        ]);
       }
     } catch (_e) {
       // no-op: this should never interrupt content script behavior
@@ -1888,8 +1952,8 @@
   // rejects with 401 forever.
   function startAuthTokenSyncWatchers() {
     try {
-      var appOrigin = new URL(CONFIG.appUrl).origin;
-      if (window.location.origin !== appOrigin) return;
+      var allowed = gradfitAppOrigins();
+      if (allowed.indexOf(window.location.origin) === -1) return;
 
       // Cross-tab updates: fires when another tab writes to localStorage.
       window.addEventListener('storage', function(e) {
