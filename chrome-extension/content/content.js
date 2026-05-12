@@ -553,6 +553,219 @@
   }
 
   // ═══════════════════════════════════════════════════════════
+  // STYLE-MATCH HIGHLIGHT  (closet-aware "you should try this" hint)
+  // ═══════════════════════════════════════════════════════════
+  //
+  // For every product image we already detect, score it against the
+  // cached closet style profile (palette + categories + keywords) from
+  // the service worker. When the score crosses a threshold we wrap the
+  // image with a subtle animated glow border and mount a hover pill —
+  // "✨ Try this from your closet" — distinct from the Try-On CTA so
+  // the two don't fight for the same hover target.
+  //
+  // Matching is keyword-only by design: alt text + image URL path +
+  // immediate parent text vs the profile's keywords / categories /
+  // garment_types. No canvas color sampling (avoids CORS), no per-
+  // image API calls (avoids latency).
+
+  var styleProfileState = {
+    profile: null,
+    enabled: true,
+    fetched: false,
+    fetchInFlight: false,
+  };
+  var styleHighlights = new Map(); // img → wrapper element
+  var STYLE_MATCH_THRESHOLD = 2;   // tune by feel
+
+  function requestStyleProfile() {
+    if (styleProfileState.fetched || styleProfileState.fetchInFlight) return;
+    styleProfileState.fetchInFlight = true;
+    safeSendMessage({ action: 'getStyleProfile' }, function(resp) {
+      styleProfileState.fetchInFlight = false;
+      styleProfileState.fetched = true;
+      if (!resp || !resp.success) return;
+      styleProfileState.profile = resp.profile || null;
+      styleProfileState.enabled =
+        resp.enabled === undefined ? true : Boolean(resp.enabled);
+      // Re-pass over any images we've already decorated with try-on
+      // buttons so the highlight can apply now that the profile is
+      // here. Keep it cheap: iterate the existing imageOverlays map.
+      try {
+        imageOverlays.forEach(function(_, img) { mountStyleHighlight(img); });
+      } catch (_e) {}
+    });
+  }
+
+  function _styleTokens(text) {
+    if (!text) return [];
+    var out = [];
+    var re = /[a-z0-9]{3,}/g;
+    var m;
+    var lower = String(text).toLowerCase();
+    while ((m = re.exec(lower)) !== null) out.push(m[0]);
+    return out;
+  }
+
+  function _imageContextTokens(img) {
+    var bag = [];
+    try {
+      if (img.alt) bag = bag.concat(_styleTokens(img.alt));
+      var src = getImageUrl(img) || '';
+      try {
+        var path = new URL(src, location.href).pathname || '';
+        bag = bag.concat(_styleTokens(path.replace(/[\-_/]+/g, ' ')));
+      } catch (_e) {}
+      var p = img.parentElement;
+      if (p && p.textContent) {
+        bag = bag.concat(_styleTokens(p.textContent.slice(0, 200)));
+      }
+      var t = img.getAttribute && img.getAttribute('title');
+      if (t) bag = bag.concat(_styleTokens(t));
+    } catch (_e) {}
+    return bag;
+  }
+
+  function scoreStyleMatch(img, profile) {
+    if (!profile) return 0;
+    var tokens = _imageContextTokens(img);
+    if (!tokens.length) return 0;
+    var set = Object.create(null);
+    for (var i = 0; i < tokens.length; i++) set[tokens[i]] = true;
+    var score = 0;
+    // Keyword overlap (most discriminating signal — these are words
+    // the user has explicitly used in their own closet).
+    var kws = Array.isArray(profile.keywords) ? profile.keywords : [];
+    for (var k = 0; k < kws.length; k++) {
+      if (set[String(kws[k]).toLowerCase()]) score += 1;
+    }
+    // Category match (free-form labels from the user).
+    var cats = Array.isArray(profile.categories) ? profile.categories : [];
+    for (var c = 0; c < cats.length; c++) {
+      var name = (cats[c] && cats[c].name) || '';
+      var catTokens = _styleTokens(name);
+      for (var j = 0; j < catTokens.length; j++) {
+        if (set[catTokens[j]]) { score += 1.5; break; }
+      }
+    }
+    // garment_type hint: rough mapping from a few canonical words to
+    // the type buckets. We score if any token matches one of the
+    // types the user actually has.
+    var typeMap = {
+      upper_body: ['shirt','top','blouse','tee','tshirt','sweater','hoodie','cardigan'],
+      lower_body: ['pants','trousers','jeans','shorts','skirt','leggings'],
+      full_body: ['dress','jumpsuit','romper','gown'],
+      outerwear: ['jacket','coat','blazer','parka','vest'],
+      accessory: ['bag','hat','cap','belt','scarf','shoes','sneaker','boots'],
+    };
+    var types = profile.garment_types || {};
+    Object.keys(typeMap).forEach(function(typeKey) {
+      if (!types[typeKey]) return;
+      var words = typeMap[typeKey];
+      for (var w = 0; w < words.length; w++) {
+        if (set[words[w]]) { score += 1; break; }
+      }
+    });
+    return score;
+  }
+
+  function mountStyleHighlight(img) {
+    if (!styleProfileState.enabled) return;
+    if (styleHighlights.has(img)) return;
+    var profile = styleProfileState.profile;
+    if (!profile || !profile.total_items) return;
+    var score = scoreStyleMatch(img, profile);
+    if (score < STYLE_MATCH_THRESHOLD) return;
+
+    try {
+      var wrapper = ensurePositionedParent(img);
+      if (!wrapper) return;
+
+      // Soft glow outline that sits behind the image but in front of
+      // the page background. Use an absolutely-positioned div so we
+      // never touch the retailer's image element.
+      var glow = document.createElement('div');
+      glow.className = 'tryon-ai-style-glow';
+      glow.style.cssText =
+        'position:absolute;inset:0;pointer-events:none;border-radius:12px;' +
+        'box-shadow:0 0 0 2px rgba(139,92,246,0.55), 0 0 24px 4px rgba(139,92,246,0.35);' +
+        'z-index:999996;animation:tryon-style-glow-pulse 2.4s ease-in-out infinite;';
+
+      var pill = document.createElement('div');
+      pill.className = 'tryon-ai-style-pill';
+      pill.textContent = '✨ You should try this';
+      pill.style.cssText =
+        'position:absolute;top:8px;left:8px;z-index:999997;' +
+        'padding:4px 9px;border-radius:999px;font-size:11px;font-weight:700;' +
+        'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
+        'color:#fff;background:linear-gradient(135deg,#8b5cf6,#3b82f6);' +
+        'box-shadow:0 4px 14px rgba(139,92,246,0.35);' +
+        'opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease;' +
+        'pointer-events:none;letter-spacing:.02em;';
+
+      function showPill() { pill.style.opacity = '1'; pill.style.transform = 'translateY(0)'; }
+      function hidePill() { pill.style.opacity = '0'; pill.style.transform = 'translateY(-4px)'; }
+      img.addEventListener('mouseenter', showPill);
+      img.addEventListener('mouseleave', hidePill);
+
+      wrapper.appendChild(glow);
+      wrapper.appendChild(pill);
+      styleHighlights.set(img, { wrapper: wrapper, glow: glow, pill: pill, showPill: showPill, hidePill: hidePill });
+    } catch (err) {
+      console.warn('[GradFiT] style highlight error:', err);
+    }
+  }
+
+  function clearAllStyleHighlights() {
+    styleHighlights.forEach(function(rec, img) {
+      try {
+        if (rec.glow && rec.glow.parentNode) rec.glow.parentNode.removeChild(rec.glow);
+        if (rec.pill && rec.pill.parentNode) rec.pill.parentNode.removeChild(rec.pill);
+        if (img && rec.showPill) img.removeEventListener('mouseenter', rec.showPill);
+        if (img && rec.hidePill) img.removeEventListener('mouseleave', rec.hidePill);
+      } catch (_e) {}
+    });
+    styleHighlights.clear();
+  }
+
+  // Inject a small keyframes block once so the glow pulses softly.
+  (function injectStyleHighlightKeyframes() {
+    try {
+      if (document.getElementById('tryon-style-glow-keyframes')) return;
+      var s = document.createElement('style');
+      s.id = 'tryon-style-glow-keyframes';
+      s.textContent =
+        '@keyframes tryon-style-glow-pulse {' +
+        '0%,100%{box-shadow:0 0 0 2px rgba(139,92,246,0.55),0 0 24px 4px rgba(139,92,246,0.35);}' +
+        '50%{box-shadow:0 0 0 2px rgba(139,92,246,0.75),0 0 30px 6px rgba(139,92,246,0.55);}' +
+        '}';
+      (document.head || document.documentElement).appendChild(s);
+    } catch (_e) {}
+  })();
+
+  // Listen for toggle changes from the popup so users can flip the
+  // feature on/off without reloading the page.
+  try {
+    chrome.storage.onChanged.addListener(function(changes, area) {
+      if (area !== 'local') return;
+      if (changes.gradfit_style_highlights_enabled) {
+        styleProfileState.enabled = changes.gradfit_style_highlights_enabled.newValue !== false;
+        if (!styleProfileState.enabled) {
+          clearAllStyleHighlights();
+        } else {
+          // Re-run highlight pass on already-decorated images.
+          imageOverlays.forEach(function(_, img) { mountStyleHighlight(img); });
+        }
+      }
+      if (changes.gradfit_style_profile) {
+        styleProfileState.profile = changes.gradfit_style_profile.newValue || null;
+        // Re-decorate visible items with the fresh profile.
+        clearAllStyleHighlights();
+        imageOverlays.forEach(function(_, img) { mountStyleHighlight(img); });
+      }
+    });
+  } catch (_e) {}
+
+  // ═══════════════════════════════════════════════════════════
   // BUTTON CREATION
   // ═══════════════════════════════════════════════════════════
   function ensurePositionedParent(img) {
@@ -605,6 +818,12 @@
 
       wrapper.appendChild(overlay);
       imageOverlays.set(img, { overlay: overlay, wrapper: wrapper });
+
+      // Closet-aware highlight runs alongside the Try-On CTA. It bails
+      // out cleanly when the profile isn't loaded yet (the loader on
+      // boot re-walks imageOverlays once it lands) or when the user
+      // has turned highlights off via the popup toggle.
+      try { mountStyleHighlight(img); } catch (_e) {}
     } catch (err) { console.error('[GradFiT] Button error:', err); }
   }
 
@@ -1713,6 +1932,10 @@
     console.log('[GradFiT] Content script initializing...');
     syncGradfitAuthToken();
     startAuthTokenSyncWatchers();
+    // Kick off the closet style-profile fetch in parallel with the
+    // first image scan. When it lands the profile callback re-walks
+    // already-decorated images to add highlights retroactively.
+    requestStyleProfile();
     processImages();
     setupMutationObserver();
     setupIntersectionObserver();

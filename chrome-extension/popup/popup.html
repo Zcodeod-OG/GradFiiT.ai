@@ -88,6 +88,23 @@
       </button>
     </section>
 
+    <section class="popup-card" id="styleHighlightsCard" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <div style="display:flex;flex-direction:column;gap:2px;flex:1;">
+        <p class="popup-eyebrow">Style highlights</p>
+        <p style="font-size:12px;line-height:1.4;color:rgba(255,255,255,.85);margin:0;">
+          Glow products on retailer pages that match your closet.
+        </p>
+      </div>
+      <label style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer;flex-shrink:0;">
+        <input type="checkbox" id="styleHighlightsToggle" checked
+          style="opacity:0;width:0;height:0;position:absolute;" />
+        <span id="styleHighlightsTrack"
+          style="position:absolute;inset:0;background:rgba(255,255,255,.18);border-radius:999px;transition:background .2s;"></span>
+        <span id="styleHighlightsThumb"
+          style="position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .2s,box-shadow .2s;box-shadow:0 2px 6px rgba(0,0,0,.25);"></span>
+      </label>
+    </section>
+
     <section class="popup-card popup-card--upgrade" id="upgradeCard">
       <div>
         <p class="popup-eyebrow">Upgrade</p>

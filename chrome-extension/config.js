@@ -14,10 +14,10 @@
  */
 
 (function () {
-  // __GRADFIT_APP_URL__ - replaced at build time
-  var APP_URL = "http://localhost:3000";
-  // __GRADFIT_API_URL__ - replaced at build time
-  var API_URL = "http://localhost:8000";
+  // __GRADFIT_APP_URL__ - replaced at build time by scripts/build.sh
+  var APP_URL = "https://gradfit.tech";
+  // __GRADFIT_API_URL__ - replaced at build time by scripts/build.sh
+  var API_URL = "https://gradfit-ai.onrender.com";
 
   globalThis.GRADFIT_CONFIG = {
     appUrl: APP_URL,

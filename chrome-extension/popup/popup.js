@@ -347,9 +347,56 @@ function bindActions() {
   });
 }
 
+// Style highlights toggle — controls whether the content script glows
+// products on retailer pages that match the user's closet. Defaults
+// to ON. Persisted in chrome.storage.local; the content script reads
+// it via the chrome.storage.onChanged listener.
+async function bindStyleHighlightsToggle() {
+  const input = document.getElementById("styleHighlightsToggle");
+  const track = document.getElementById("styleHighlightsTrack");
+  const thumb = document.getElementById("styleHighlightsThumb");
+  if (!input || !track || !thumb) return;
+
+  const paint = (on) => {
+    input.checked = !!on;
+    track.style.background = on
+      ? "linear-gradient(135deg,#8b5cf6,#3b82f6)"
+      : "rgba(255,255,255,.18)";
+    thumb.style.transform = on ? "translateX(18px)" : "translateX(0)";
+  };
+
+  try {
+    const stored = await chrome.storage.local.get("gradfit_style_highlights_enabled");
+    const raw = stored.gradfit_style_highlights_enabled;
+    paint(raw === undefined ? true : Boolean(raw));
+  } catch (_e) {
+    paint(true);
+  }
+
+  input.addEventListener("change", async () => {
+    const next = input.checked;
+    paint(next);
+    try {
+      await chrome.runtime.sendMessage({
+        action: "setStyleHighlightsEnabled",
+        enabled: next,
+      });
+    } catch (_e) {
+      // SW might be asleep — fall back to direct storage write so the
+      // content-script storage.onChanged listener still fires.
+      try {
+        await chrome.storage.local.set({
+          gradfit_style_highlights_enabled: next,
+        });
+      } catch (_inner) {}
+    }
+  });
+}
+
 async function init() {
   bindActions();
   bindStorageListener();
+  await bindStyleHighlightsToggle();
   await loadSnapshot();
 }
 
