@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
-import math
 from datetime import datetime, timezone
-from typing import Any, Mapping
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
@@ -15,67 +13,13 @@ from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import AvatarBuildRequest
-from app.services.face_processor import get_face_processor
 from app.services.storage import get_storage
 from app.services.subscription import PLAN_RULES, get_plan_rule, get_usage_snapshot, list_plan_catalog
 from app.services.three_d_tryon import get_three_d_tryon_service
-from app.services.tryon_input_gate import get_tryon_input_gate
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/user", tags=["user"])
-
-
-def _normalize_face_embedding(embedding: Any) -> list[float] | None:
-    """Persist embeddings as plain Python floats for JSON compatibility."""
-    if embedding is None:
-        return None
-    try:
-        return [float(x) for x in embedding]
-    except (TypeError, ValueError):
-        return None
-
-
-def _json_safe_gate_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
-    """Strip numpy scalars / bound huge strings before JSON persistence."""
-
-    def _walk(obj: Any, depth: int = 0) -> Any:
-        if depth > 14:
-            return None
-        if obj is None:
-            return None
-        if isinstance(obj, bool):
-            return obj
-        if isinstance(obj, int) and not isinstance(obj, bool):
-            return obj
-        if isinstance(obj, float):
-            if math.isnan(obj) or math.isinf(obj):
-                return None
-            return obj
-        if isinstance(obj, str):
-            return obj if len(obj) <= 6000 else obj[:5997] + "..."
-        if isinstance(obj, bytes):
-            return None
-        if isinstance(obj, Mapping):
-            out: dict[str, Any] = {}
-            for k, v in list(obj.items())[:100]:
-                key = str(k)[:160]
-                out[key] = _walk(v, depth + 1)
-            return out
-        if isinstance(obj, (list, tuple)):
-            return [_walk(v, depth + 1) for v in list(obj)[:200]]
-        if hasattr(obj, "item"):
-            try:
-                return _walk(obj.item(), depth + 1)
-            except Exception:
-                pass
-        try:
-            return float(obj)
-        except (TypeError, ValueError):
-            return str(obj)[:6000]
-
-    cleaned = _walk(dict(metrics))
-    return cleaned if isinstance(cleaned, dict) else {"_truncated": True}
 
 
 def _sign_for_browser(url: str | None) -> str | None:
@@ -335,45 +279,38 @@ async def upload_person_photo(
         except Exception as exc:  # pragma: no cover - best-effort cleanup
             logger.warning("Could not delete previous person photo %s: %s", previous_key, exc)
 
-    # Run the Layer-1 input gate synchronously so the wizard can show
-    # actionable feedback ("face not visible", "image too blurry"). The
-    # gate is best-effort: if numpy/Pillow/YOLO is unavailable we still
-    # keep the photo and the runner falls back to a normal flow.
-    gate_result = get_tryon_input_gate().validate(url)
-    smart_crop_url = (
-        gate_result.person_image_url
-        if gate_result.smart_cropped and gate_result.person_image_url
-        else None
-    )
-
-    face_processor = get_face_processor()
-    face_url = None
-    face_embedding = None
-    try:
-        face_url = face_processor.crop_face_url(smart_crop_url or url)
-        if face_url:
-            face_embedding = _normalize_face_embedding(
-                face_processor.embed_face(smart_crop_url or url)
-            )
-    except Exception as exc:  # pragma: no cover - best-effort caching
-        logger.warning("FaceProcessor caching failed for user %s: %s", current_user.id, exc)
-
+    # Heavy preprocessing (YOLO11-pose input gate, face crop, CLIP face
+    # embedding) used to run synchronously here. On a cold Render dyno
+    # that adds 60-100s to the request and times out the signup flow.
+    # We now stage just the upload + URL on the user, clear any caches
+    # that belonged to the previous photo, and hand the ML work to a
+    # Celery background task. The try-on pipeline already re-computes
+    # these on demand when the caches are empty, so a missing/late
+    # precompute is safe.
     current_user.default_person_image_url = url
     current_user.default_person_image_s3_key = s3_key
-    current_user.default_person_smart_crop_url = smart_crop_url
-    current_user.default_person_face_url = face_url
-    current_user.default_person_face_embedding = face_embedding
-    current_user.default_person_input_gate_metrics = {
-        "passed": bool(gate_result.passed),
-        "reasons": [str(r)[:2000] for r in (gate_result.reasons or [])][:50],
-        "smart_cropped": bool(gate_result.smart_cropped),
-        "metrics": _json_safe_gate_metrics(gate_result.metrics or {}),
-    }
+    current_user.default_person_smart_crop_url = None
+    current_user.default_person_face_url = None
+    current_user.default_person_face_embedding = None
+    current_user.default_person_input_gate_metrics = None
     current_user.default_person_uploaded_at = datetime.now(timezone.utc)
 
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
+
+    # Best-effort dispatch: if the broker is unreachable we still return
+    # 200 -- the next try-on will run the gate/face/embedding live.
+    try:
+        from app.services.tasks import precompute_person_photo_task
+
+        precompute_person_photo_task.delay(current_user.id)
+    except Exception as exc:  # pragma: no cover - broker unreachable
+        logger.warning(
+            "Could not enqueue precompute_person_photo for user %s: %s",
+            current_user.id,
+            exc,
+        )
 
     return {
         "success": True,
