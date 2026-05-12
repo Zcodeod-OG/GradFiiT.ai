@@ -1,0 +1,39 @@
+name: Keep Render backend warm
+
+# Render's free tier spins instances down after ~15 min of inactivity. This
+# workflow pings the backend /health endpoint on a schedule so the next real
+# user request doesn't pay the 30–60s cold-start penalty.
+#
+# Setup:
+#   1. Go to repo Settings → Secrets and variables → Actions → Variables.
+#   2. Add a new repository variable named `BACKEND_URL` with the value of
+#      your Render service URL, e.g. `https://gradfit-backend.onrender.com`.
+#   3. Commit and push this file. The cron starts on the next push to the
+#      default branch.
+#
+# Note: Render free tier has a monthly compute budget (~750 hrs). 24/7
+# pinging effectively keeps the service running full-time; if you have
+# multiple free services this can exhaust the quota. Adjust the cron
+# schedule below to only run during expected user hours if needed.
+
+on:
+  schedule:
+    # Every 10 minutes. Render sleeps after ~15 min idle, so 10 keeps a
+    # safety margin.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend /health
+        run: |
+          if [ -z "${{ vars.BACKEND_URL }}" ]; then
+            echo "BACKEND_URL repository variable is not set." >&2
+            echo "See the comment at the top of this workflow file for setup." >&2
+            exit 1
+          fi
+          # -fsS: fail on HTTP errors, silent progress, still show errors.
+          # --max-time 90 covers a cold-start response.
+          curl -fsS --max-time 90 "${{ vars.BACKEND_URL }}/health"
