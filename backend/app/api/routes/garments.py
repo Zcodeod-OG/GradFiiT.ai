@@ -20,12 +20,15 @@ from app.schemas.garment import (
     GarmentUpdate,
     OutfitRecommendation as OutfitRecommendationSchema,
     OutfitRecommendationsResponse,
+    StyleProfileCategory,
+    StyleProfileResponse,
 )
 from app.api.deps import get_current_active_user
 from app.services.garment_runner import run_garment_preprocess
 from app.services.garment_suggestions import suggest_pairings
 from app.services.outfit_recommender import recommend_outfits
 from app.services.storage import get_storage
+from app.services.style_profile import build_style_profile
 from app.services.tasks import process_garment_task
 
 logger = logging.getLogger(__name__)
@@ -124,6 +127,37 @@ def get_garments(
         query = query.filter(Garment.saved_to_closet.is_(True))
     garments = query.offset(skip).limit(limit).all()
     return [_serialise_garment(g) for g in garments]
+
+
+@router.get(
+    "/style-profile",
+    response_model=StyleProfileResponse,
+)
+def get_style_profile(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Return a compact style fingerprint of the user's closet.
+
+    Consumed by the Chrome extension to decide whether a product image
+    on a retailer page is worth highlighting as a match. The profile
+    is intentionally small so the extension can cache it and run
+    matching client-side without per-image API calls.
+
+    Registered before the ``/{garment_id}`` route so the literal
+    ``style-profile`` prefix isn't coerced as an int garment id.
+    """
+    profile = build_style_profile(db, user_id=current_user.id)
+    return StyleProfileResponse(
+        palette=profile.palette,
+        garment_types=profile.garment_types,
+        categories=[
+            StyleProfileCategory(name=str(c["name"]), count=int(c["count"]))  # type: ignore[arg-type]
+            for c in profile.categories
+        ],
+        keywords=profile.keywords,
+        total_items=profile.total_items,
+    )
 
 
 @router.get(

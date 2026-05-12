@@ -34,8 +34,12 @@ const CONFIG = {
     snapshot: 'gradfit_user_snapshot',
     snapshotTimestamp: 'gradfit_user_snapshot_at',
     recentTryons: 'gradfit_recent_tryons',
+    styleProfile: 'gradfit_style_profile',
+    styleProfileAt: 'gradfit_style_profile_at',
+    styleHighlightsEnabled: 'gradfit_style_highlights_enabled',
   },
   snapshotMaxAgeMs: 60 * 1000,
+  styleProfileMaxAgeMs: 5 * 60 * 1000,
   recentTryonsLimit: 10,
   appUrl: _GRADFIT.appUrl,
   apiUrl: _GRADFIT.apiUrl,
@@ -1087,6 +1091,83 @@ async function fetchUserSnapshot(force = false) {
   return snapshotInFlight;
 }
 
+/**
+ * Fetch + cache the user's closet style profile.
+ *
+ * The content script reads this via `getStyleProfile` and scores
+ * detected product images against it to decide whether to show the
+ * "you should try this" highlight. The profile is small (palette
+ * hexes + counts + a few dozen keywords) and changes slowly, so a
+ * 5-minute cache window is plenty.
+ *
+ * Returns ``null`` if the user isn't signed in or the request fails;
+ * the content script treats that as "no highlights".
+ */
+let styleProfileInFlight = null;
+async function fetchStyleProfile(force = false) {
+  if (styleProfileInFlight) return styleProfileInFlight;
+
+  styleProfileInFlight = (async () => {
+    try {
+      const stored = await chrome.storage.local.get([
+        CONFIG.storageKeys.userToken,
+        CONFIG.storageKeys.styleProfile,
+        CONFIG.storageKeys.styleProfileAt,
+      ]);
+      const token = stored[CONFIG.storageKeys.userToken];
+      if (!token) {
+        // No auth — clear stale profile so we don't surface highlights
+        // from a previous user.
+        await chrome.storage.local.remove([
+          CONFIG.storageKeys.styleProfile,
+          CONFIG.storageKeys.styleProfileAt,
+        ]);
+        return null;
+      }
+
+      const lastFetched = stored[CONFIG.storageKeys.styleProfileAt] || 0;
+      if (
+        !force &&
+        stored[CONFIG.storageKeys.styleProfile] &&
+        Date.now() - lastFetched < CONFIG.styleProfileMaxAgeMs
+      ) {
+        return stored[CONFIG.storageKeys.styleProfile];
+      }
+
+      const headers = gradfitHeaders({
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      });
+
+      const result = await fetchJsonWithTimeout(
+        `${CONFIG.apiUrl}/api/garments/style-profile`,
+        { method: 'GET', headers },
+        8000
+      );
+
+      if (!result.response.ok) {
+        // 401: caller is signed out — the snapshot refresher already
+        // handles token cleanup. Just return null here.
+        return null;
+      }
+
+      const profile = result.data || null;
+      await chrome.storage.local.set({
+        [CONFIG.storageKeys.styleProfile]: profile,
+        [CONFIG.storageKeys.styleProfileAt]: Date.now(),
+      });
+      return profile;
+    } catch (err) {
+      console.warn('GradFiT SW: style profile refresh failed', err);
+      return null;
+    } finally {
+      styleProfileInFlight = null;
+    }
+  })();
+
+  return styleProfileInFlight;
+}
+
 async function recordTryOnEvent(event) {
   if (!event || (!event.tryonId && !event.imageUrl)) return;
   try {
@@ -1118,11 +1199,14 @@ async function recordTryOnEvent(event) {
   }
 }
 
-// Refresh snapshot whenever the auth token flips (sign-in / sign-out).
+// Refresh snapshot + style profile whenever the auth token flips
+// (sign-in / sign-out). Sign-out clears the cached profile so the
+// content script stops surfacing the previous user's highlights.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes[CONFIG.storageKeys.userToken]) {
     void fetchUserSnapshot(true);
+    void fetchStyleProfile(true);
   }
 });
 
@@ -1205,6 +1289,47 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             success: true,
             snapshot: stored[CONFIG.storageKeys.snapshot] || null,
           });
+          break;
+        }
+
+        case 'getStyleProfile': {
+          // Used by the content-script style-highlights pass. We
+          // resolve the cached value immediately if present, then
+          // kick off a refresh in the background (no await) so the
+          // next request sees fresh data.
+          const stored = await chrome.storage.local.get([
+            CONFIG.storageKeys.styleProfile,
+            CONFIG.storageKeys.styleHighlightsEnabled,
+          ]);
+          // Default highlights to ON when the flag has never been
+          // set (first install). Anything else (true / false) wins.
+          const rawEnabled = stored[CONFIG.storageKeys.styleHighlightsEnabled];
+          const enabled = rawEnabled === undefined ? true : Boolean(rawEnabled);
+          const cached = stored[CONFIG.storageKeys.styleProfile] || null;
+          if (!cached) {
+            // Cache miss — synchronously fetch once so the content
+            // script gets a usable profile on first page-load.
+            const fresh = await fetchStyleProfile(false);
+            sendResponse({ success: true, profile: fresh, enabled });
+            break;
+          }
+          void fetchStyleProfile(false);
+          sendResponse({ success: true, profile: cached, enabled });
+          break;
+        }
+
+        case 'refreshStyleProfile': {
+          const profile = await fetchStyleProfile(Boolean(request.force));
+          sendResponse({ success: true, profile });
+          break;
+        }
+
+        case 'setStyleHighlightsEnabled': {
+          const next = Boolean(request.enabled);
+          await chrome.storage.local.set({
+            [CONFIG.storageKeys.styleHighlightsEnabled]: next,
+          });
+          sendResponse({ success: true, enabled: next });
           break;
         }
 
@@ -1317,6 +1442,7 @@ async function initializeBadge() {
 // Initialize when service worker starts
 initializeBadge();
 void fetchUserSnapshot(true);
+void fetchStyleProfile(true);
 
 // Reset counter daily (also reset on startup)
 chrome.alarms.onAlarm.addListener(async (alarm) => {
@@ -1325,6 +1451,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     await updateBadge();
   } else if (alarm.name === 'gradfitRefreshSnapshot') {
     await fetchUserSnapshot(true);
+    await fetchStyleProfile(true);
   }
 });
 

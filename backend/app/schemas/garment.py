@@ -79,3 +79,21 @@ class OutfitRecommendation(BaseModel):
 class OutfitRecommendationsResponse(BaseModel):
     outfits: List[OutfitRecommendation]
 
+
+class StyleProfileCategory(BaseModel):
+    name: str
+    count: int
+
+
+class StyleProfileResponse(BaseModel):
+    """Compact style fingerprint consumed by the Chrome extension to
+    decide whether a product image on a retailer page matches the
+    user's closet. Built by `app.services.style_profile`.
+    """
+
+    palette: List[str]
+    garment_types: dict[str, int]
+    categories: List[StyleProfileCategory]
+    keywords: List[str]
+    total_items: int
+
