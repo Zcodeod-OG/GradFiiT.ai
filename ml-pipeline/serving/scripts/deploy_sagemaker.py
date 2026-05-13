@@ -19,6 +19,39 @@ Usage::
 
 The script is idempotent: re-running creates a new EndpointConfig and
 calls ``UpdateEndpoint`` with zero downtime.
+
+G6 (L4 GPU) migration — dual-endpoint protocol:
+    L4 is ~33% cheaper than A10G with comparable Flux throughput. Stand up
+    a parallel endpoint, benchmark it side-by-side, then cut over by
+    flipping the backend's ``SAGEMAKER_ENDPOINT_NAME`` env var.
+
+    # 1. Deploy a parallel g6.xlarge endpoint (does NOT touch prod):
+    python deploy_sagemaker.py \\
+        --account-id 123456789012 --region us-east-1 \\
+        --image-tag $(git rev-parse --short HEAD) \\
+        --bucket gradfit-prod \\
+        --model-data s3://gradfit-prod/models/serving-2026-04-27.tar.gz \\
+        --role-arn arn:aws:iam::123456789012:role/gradfit-sagemaker \\
+        --endpoint-name gradfit-serving-g6 \\
+        --instance-type ml.g6.xlarge
+
+    # 2. Benchmark both endpoints (uses the existing harness):
+    python scripts/benchmark_tryon_v2.py --mode sagemaker \\
+        --endpoint-name gradfit-serving --bucket gradfit-prod \\
+        --iterations 12 --lanes fast,balanced,best
+    python scripts/benchmark_tryon_v2.py --mode sagemaker \\
+        --endpoint-name gradfit-serving-g6 --bucket gradfit-prod \\
+        --iterations 12 --lanes fast,balanced,best
+
+    # 3. Compare P95 / per-stage timings in the JSON outputs under
+    #    ml-pipeline/benchmarks/. Acceptance criteria: g6 P95 within 10%
+    #    of g5, no quality regressions in spot-check (smoke_test.py).
+
+    # 4. Cut over by setting SAGEMAKER_ENDPOINT_NAME=gradfit-serving-g6
+    #    in the backend's environment. Roll back is symmetric.
+
+    # 5. After 1 week of clean metrics, decommission the old endpoint:
+    #    aws sagemaker delete-endpoint --endpoint-name gradfit-serving
 """
 
 from __future__ import annotations
@@ -81,11 +114,15 @@ def create_or_update_endpoint(
     instance_type: str = "ml.g5.2xlarge",
     output_s3_path: str = "s3://gradfit-prod/inference/output/",
     failure_s3_path: str = "s3://gradfit-prod/inference/failures/",
+    endpoint_name: str = ENDPOINT_NAME,
 ) -> None:
     sm = boto3.client("sagemaker", region_name=region)
     suffix = time.strftime("%Y%m%d-%H%M%S")
-    model_name = f"{MODEL_NAME}-{suffix}"
-    endpoint_config_name = f"{ENDPOINT_CONFIG_PREFIX}-{suffix}"
+    # Namespace model/config by the endpoint name so a parallel g6 endpoint
+    # doesn't clobber the prod g5 endpoint's resources during a cutover test.
+    name_root = endpoint_name
+    model_name = f"{name_root}-{suffix}"
+    endpoint_config_name = f"{name_root}-{suffix}"
 
     sm.create_model(
         ModelName=model_name,
@@ -128,22 +165,22 @@ def create_or_update_endpoint(
     )
 
     try:
-        sm.describe_endpoint(EndpointName=ENDPOINT_NAME)
-        logger.info("Updating existing endpoint %s", ENDPOINT_NAME)
+        sm.describe_endpoint(EndpointName=endpoint_name)
+        logger.info("Updating existing endpoint %s", endpoint_name)
         sm.update_endpoint(
-            EndpointName=ENDPOINT_NAME,
+            EndpointName=endpoint_name,
             EndpointConfigName=endpoint_config_name,
             RetainAllVariantProperties=False,
         )
     except sm.exceptions.ClientError:
-        logger.info("Creating endpoint %s", ENDPOINT_NAME)
+        logger.info("Creating endpoint %s", endpoint_name)
         sm.create_endpoint(
-            EndpointName=ENDPOINT_NAME,
+            EndpointName=endpoint_name,
             EndpointConfigName=endpoint_config_name,
         )
 
     register_autoscaling(
-        region=region, endpoint_name=ENDPOINT_NAME, variant_name="primary"
+        region=region, endpoint_name=endpoint_name, variant_name="primary"
     )
 
 
@@ -189,6 +226,15 @@ def main() -> None:
     parser.add_argument("--role-arn", required=True)
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--instance-type", default="ml.g5.2xlarge")
+    parser.add_argument(
+        "--endpoint-name",
+        default=ENDPOINT_NAME,
+        help=(
+            "Endpoint name. Override (e.g. 'gradfit-serving-g6') to stand "
+            "up a parallel endpoint for instance-type benchmarking without "
+            "touching the live prod endpoint."
+        ),
+    )
     args = parser.parse_args()
 
     image_uri = build_and_push_image(
@@ -202,6 +248,7 @@ def main() -> None:
         instance_type=args.instance_type,
         output_s3_path=f"s3://{args.bucket}/inference/output/",
         failure_s3_path=f"s3://{args.bucket}/inference/failures/",
+        endpoint_name=args.endpoint_name,
     )
 
 
