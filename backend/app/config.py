@@ -492,8 +492,14 @@ class Settings(BaseSettings):
     )
 
     ALLOW_THREAD_FALLBACK_FOR_TRYON: bool = Field(
-        default=True,
-        description="Allow thread fallback when Celery dispatch fails"
+        default=False,
+        description=(
+            "Allow thread fallback when Celery dispatch fails. Default OFF: "
+            "the fallback runs the full try-on pipeline (input gate, pose, "
+            "post-process) inside the FastAPI web process, which OOMs on "
+            "small hosts like Render's 512MB free tier. Only enable on a "
+            "web instance with enough memory to load ML deps in-process."
+        ),
     )
 
     TRYON_SOFT_TIME_LIMIT_SECONDS: int = Field(
@@ -874,8 +880,16 @@ class Settings(BaseSettings):
     # ==================== YOLO11 Pose (Quick Preview) ====================
 
     YOLO11_POSE_ENABLED: bool = Field(
-        default=True,
-        description="Enable YOLO11 pose extraction for quick try-on previews"
+        default=False,
+        description=(
+            "Enable YOLO11 pose extraction for quick try-on previews. "
+            "Default OFF: ultralytics + the YOLO11 weights consume ~200MB "
+            "of RAM and pull in torch/cv2 at import. Loading this in the "
+            "FastAPI web process (e.g. Render free tier, 512MB) leads to "
+            "OOM. Enable only on the Celery worker / a sufficiently sized "
+            "web host. The preview endpoint degrades gracefully (no pose "
+            "metadata) when this is off."
+        ),
     )
 
     YOLO11_POSE_MODEL: str = Field(
