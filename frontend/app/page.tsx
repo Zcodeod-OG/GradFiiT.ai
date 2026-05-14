@@ -6,11 +6,13 @@ import {
   ArrowRight,
   CalendarClock,
   Camera,
+  CreditCard,
   History,
   LayoutDashboard,
   Loader2,
   LogOut,
   Orbit,
+  Palette,
   Plus,
   RefreshCw,
   Settings,
@@ -619,12 +621,13 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-background gradient-mesh relative overflow-x-clip">
+      <Navbar />
       <div className="pointer-events-none absolute -top-36 -left-20 h-72 w-72 rounded-full bg-[radial-gradient(circle,_oklch(0.78_0.19_255_/_0.32)_0%,_transparent_72%)] blur-2xl" />
       <div className="pointer-events-none absolute top-36 -right-16 h-96 w-96 rounded-full bg-[radial-gradient(circle,_oklch(0.84_0.19_150_/_0.32)_0%,_transparent_72%)] blur-2xl" />
 
-      <div className="mx-auto max-w-7xl p-4 md:p-6 relative">
+      <div className="mx-auto max-w-7xl p-4 md:p-6 pt-20 md:pt-24 relative">
         <div className="grid gap-4 md:grid-cols-[250px_1fr]">
-          <aside className="rounded-2xl border border-border/70 bg-white/65 backdrop-blur-xl p-3 md:p-4 md:sticky md:top-6 md:h-[calc(100vh-3rem)] shadow-[0_18px_48px_oklch(0.28_0.06_250/_0.14)]">
+          <aside className="rounded-2xl border border-border/70 bg-white/65 backdrop-blur-xl p-3 md:p-4 md:sticky md:top-24 md:h-[calc(100vh-7rem)] shadow-[0_18px_48px_oklch(0.28_0.06_250/_0.14)]">
             <div className="flex items-center gap-2 px-2 pb-4 border-b border-border/70">
               <div className="size-8 rounded-xl bg-gradient-to-br from-primary/90 via-sky-500 to-emerald-400 text-white flex items-center justify-center shadow-md">
                 <Sparkles className="size-4" />
@@ -660,6 +663,17 @@ export default function Page() {
             <div className="mt-6 rounded-xl border border-border/70 p-3 bg-gradient-to-br from-white/80 to-sky-50/70">
               <p className="text-sm font-medium">Quick actions</p>
               <div className="mt-3 space-y-2">
+                <Link href="/account/closet">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-start gap-2 border-primary/40 bg-white/90 font-medium text-foreground hover:bg-primary/5"
+                  >
+                    <Shirt className="size-4 shrink-0 text-primary" />
+                    Full closet &amp; 3D
+                    <ArrowRight className="size-3.5 ml-auto shrink-0 opacity-70" />
+                  </Button>
+                </Link>
                 <Link href={`/try?mode=${preferredMode}`}>
                   <Button size="sm" className="w-full justify-start gap-2 bg-gradient-to-r from-primary to-sky-500 text-white">
                     <Camera className="size-4" />
@@ -681,8 +695,28 @@ export default function Page() {
                   onClick={() => setActiveNav("closet")}
                 >
                   <Plus className="size-4" />
-                  Add to Closet
+                  Quick add (this page)
                 </Button>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-border/60 bg-white/60 p-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Account</p>
+              <div className="mt-2 flex flex-col gap-1">
+                <Link
+                  href="/account/brand-dna"
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-secondary/80 hover:text-foreground transition-colors"
+                >
+                  <Palette className="size-4 shrink-0" />
+                  Brand DNA
+                </Link>
+                <Link
+                  href="/account/billing"
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-secondary/80 hover:text-foreground transition-colors"
+                >
+                  <CreditCard className="size-4 shrink-0" />
+                  Billing
+                </Link>
               </div>
             </div>
 
@@ -714,6 +748,13 @@ export default function Page() {
                   </div>
 
                   <div className="flex gap-2 flex-wrap">
+                    <Link href="/account/closet">
+                      <Button size="sm" variant="outline" className="gap-2 border-primary/35 bg-white/90 font-medium">
+                        <Shirt className="size-4" />
+                        Full closet
+                        <ArrowRight className="size-3.5 opacity-70" />
+                      </Button>
+                    </Link>
                     <Button
                       variant="outline"
                       size="sm"
@@ -1255,6 +1296,23 @@ export default function Page() {
 
             {activeNav === "closet" && (
               <section className="grid gap-4 xl:grid-cols-[1fr_1.3fr]">
+                <Card className="border-primary/25 bg-gradient-to-r from-sky-50/90 to-white/80 backdrop-blur-lg xl:col-span-2">
+                  <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Browse your closet in 3D</p>
+                      <p className="mt-1 text-xs text-muted-foreground max-w-xl">
+                        Outfits builder, category filters, looks gallery, and 3D try-on live on the full closet page — not on this quick-add view.
+                      </p>
+                    </div>
+                    <Link href="/account/closet">
+                      <Button size="sm" className="gap-2 shrink-0 bg-gradient-to-r from-primary to-sky-500 text-white">
+                        <Shirt className="size-4" />
+                        Open full closet
+                        <ArrowRight className="size-4" />
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
                 <Card className="bg-white/72 backdrop-blur-lg border-border/70">
                   <CardHeader>
                     <CardTitle className="text-lg">Add New Garment</CardTitle>
