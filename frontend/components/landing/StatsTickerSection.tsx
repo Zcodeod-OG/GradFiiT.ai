@@ -28,8 +28,8 @@ const STATS = [
   },
   {
     label: "Looks generated",
-    value: 480,
-    suffix: "K",
+    value: 676,
+    suffix: "+",
     prefix: "",
     icon: ImageDown,
     accent: "from-fuchsia-500 to-rose-400",
@@ -80,9 +80,15 @@ export function StatsTickerSection() {
           transition={reduce ? { duration: 0 } : { duration: 0.45, ease: "easeOut" }}
           className="mb-10 flex flex-col gap-2"
         >
-          <span className="tnb-eyebrow">Proof, not promises</span>
-          <h2 className="tnb-headline text-3xl md:text-5xl max-w-2xl">
-            Trusted by 12,000+ brands and designers worldwide.
+          <span className="text-xs font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+            Proof, not promises
+          </span>
+          <h2 className="font-display max-w-2xl text-3xl font-bold tracking-tight text-balance text-foreground md:text-5xl md:leading-[1.05]">
+            Trusted by{" "}
+            <span className="bg-gradient-to-r from-primary via-sky-500 to-emerald-500 bg-clip-text text-transparent">
+              12,000+ brands
+            </span>{" "}
+            and designers worldwide.
           </h2>
         </motion.div>
 
@@ -102,14 +108,16 @@ export function StatsTickerSection() {
                 className={`absolute -right-8 -top-8 size-24 rounded-full bg-gradient-to-br opacity-10 blur-2xl ${stat.accent}`}
               />
               <stat.icon className="size-4 text-muted-foreground" />
-              <p className="mt-6 tnb-headline text-5xl md:text-6xl">
+              <p className="mt-6 font-display text-5xl font-bold tracking-tight text-foreground md:text-6xl">
                 <AnimatedCounter
                   to={stat.value}
                   suffix={stat.suffix}
                   duration={reduce ? 0 : 2.0}
                 />
               </p>
-              <p className="mt-3 tnb-eyebrow">{stat.label}</p>
+              <p className="mt-3 text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+                {stat.label}
+              </p>
             </motion.div>
           ))}
         </div>

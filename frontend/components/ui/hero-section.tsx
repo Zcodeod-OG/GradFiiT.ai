@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import Image from "next/image"
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Sparkles, ArrowRight, ChevronDown, Shirt, Wand2, Trophy, Flame, Gem } from "lucide-react"
@@ -8,6 +9,13 @@ import { AnimatedCounter } from "@/components/ui/animated-counter"
 import Link from "next/link"
 
 const ROTATING_WORDS = ["Instantly.", "In seconds.", "On any site.", "Before checkout."]
+
+const HERO_COMPARE_BASE = "/landing/hero-compare-base.png"
+const HERO_COMPARE_OUTFIT = "/landing/hero-compare-outfit.png"
+const HERO_COMPARE_IMG_STYLE = { objectPosition: "center top" as const }
+/** ~20% slower auto-compare: longer pause + slower handle travel. */
+const HERO_COMPARE_INTERVAL_MS = Math.round(2200 * 1.25)
+const HERO_COMPARE_TRANSITION_S = 1.5 * 1.25
 
 export function HeroSection() {
   const [wordIndex, setWordIndex] = useState(0)
@@ -46,7 +54,7 @@ export function HeroSection() {
     if (reduceMotion) return
     const interval = setInterval(() => {
       setSplit((prev) => (prev >= 58 ? 44 : 58))
-    }, 2200)
+    }, HERO_COMPARE_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [reduceMotion])
 
@@ -207,38 +215,64 @@ export function HeroSection() {
               </div>
             </div>
 
-            <div className="relative h-[330px] md:h-[420px]">
-              <div className="absolute inset-0 bg-[linear-gradient(160deg,#eceff6_0%,#f4f6fb_100%)]" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,oklch(0.82_0.04_248/.35),transparent_62%)]" />
+            <div className="relative h-[330px] md:h-[420px] overflow-hidden bg-muted">
+              <Image
+                src={HERO_COMPARE_BASE}
+                alt="Hero compare: everyday look in a bright studio interior"
+                fill
+                className="object-cover"
+                style={HERO_COMPARE_IMG_STYLE}
+                sizes="(max-width: 1024px) 100vw, 520px"
+                priority
+              />
+              <motion.div
+                className="absolute inset-0 z-[1]"
+                initial={false}
+                animate={{ clipPath: `inset(0% 0% 0% ${100 - split}%)` }}
+                transition={{
+                  duration: HERO_COMPARE_TRANSITION_S,
+                  ease: "easeInOut",
+                }}
+              >
+                <Image
+                  src={HERO_COMPARE_OUTFIT}
+                  alt="Hero compare: elevated outfit in the same space"
+                  fill
+                  className="object-cover"
+                  style={HERO_COMPARE_IMG_STYLE}
+                  sizes="(max-width: 1024px) 100vw, 520px"
+                  priority
+                />
+              </motion.div>
 
               <motion.div
-                className="absolute inset-y-0 right-0 bg-[linear-gradient(160deg,#dce2f0_0%,#cfd7e8_100%)]"
-                animate={{ width: `${split}%` }}
-                transition={{ duration: 1.5, ease: "easeInOut" }}
+                className="pointer-events-none absolute inset-y-0 z-[2] w-[2px] bg-white shadow-[0_0_0_1px_oklch(0.34_0.03_250/0.1)]"
+                animate={{ left: `${100 - split}%` }}
+                transition={{
+                  duration: HERO_COMPARE_TRANSITION_S,
+                  ease: "easeInOut",
+                }}
               />
 
               <motion.div
-                className="absolute inset-y-0 w-[2px] bg-white shadow-[0_0_0_1px_oklch(0.34_0.03_250/0.1)]"
+                className="pointer-events-none absolute top-1/2 z-[2] -translate-x-1/2 -translate-y-1/2 size-12 rounded-full border border-white bg-black/80 text-white flex items-center justify-center shadow-lg"
                 animate={{ left: `${100 - split}%` }}
-                transition={{ duration: 1.5, ease: "easeInOut" }}
-              />
-
-              <motion.div
-                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 size-12 rounded-full border border-white bg-black/80 text-white flex items-center justify-center"
-                animate={{ left: `${100 - split}%` }}
-                transition={{ duration: 1.5, ease: "easeInOut" }}
+                transition={{
+                  duration: HERO_COMPARE_TRANSITION_S,
+                  ease: "easeInOut",
+                }}
               >
                 <Shirt className="size-5" />
               </motion.div>
 
-              <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-foreground">
+              <div className="pointer-events-none absolute left-4 top-4 z-[3] rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-foreground shadow-sm">
                 Before
               </div>
-              <div className="absolute right-4 top-4 rounded-full bg-black/80 px-3 py-1 text-xs font-semibold text-white">
+              <div className="pointer-events-none absolute right-4 top-4 z-[3] rounded-full bg-black/80 px-3 py-1 text-xs font-semibold text-white shadow-sm">
                 After
               </div>
 
-              <div className="absolute left-4 bottom-4 right-4 rounded-xl border border-white/70 bg-white/75 backdrop-blur-sm px-3 py-2">
+              <div className="pointer-events-none absolute left-4 bottom-4 right-4 z-[3] rounded-xl border border-white/70 bg-white/75 backdrop-blur-sm px-3 py-2 shadow-sm">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Avatar Fit Score</span>
                   <span className="font-semibold text-foreground">{avatarPulse === 0 ? "84" : avatarPulse === 1 ? "88" : "91"}%</span>

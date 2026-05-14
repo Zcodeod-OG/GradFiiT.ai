@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useRef, useState } from "react"
 import {
   motion,
@@ -8,15 +9,27 @@ import {
   useTransform,
   type MotionValue,
 } from "framer-motion"
-import { Sparkles, Zap } from "lucide-react"
+import { Sparkles } from "lucide-react"
+
+const COMPARE_BASE_SRC = "/landing/compare-model-base.png"
+const COMPARE_OUTFIT_SRC = "/landing/compare-model-outfit.png"
+
+/** Bias crop toward the top of the frame so full-body portraits keep the face in view. */
+const COMPARE_IMG_POSITION = { objectPosition: "center top" as const }
+
+/** ~20% less scroll sensitivity: same motion plays over ~25% more scroll progress. */
+const SCROLL_OSC_INPUT = [0.03, 0.16, 0.28, 0.41, 0.53, 0.66, 0.78, 0.91] as const
+
+/** Slightly narrower sweep (~15% less travel from center) so oscillation feels gentler. */
+const SCROLL_OSC_OUTPUT = ["21%", "79%", "24%", "74%", "23%", "71%", "27%", "80%"] as const
 
 /**
  * Before / after compare scrubber.
  *
  * Two interaction layers:
- *  1. As the section enters the viewport, the divider auto-scrubs from 12%
- *     to 88% based on scroll position. This makes the section "explain
- *     itself" without requiring user interaction.
+ *  1. As the section enters the viewport, the divider auto-scrubs back and forth
+ *     based on scroll progress (gentler than a single sweep). This makes the section
+ *     explain itself without requiring user interaction.
  *  2. Once the user mouses over (or taps), they take manual control and
  *     scroll-driven scrubbing is paused.
  *
@@ -33,10 +46,14 @@ export function CompareScrubSection() {
     target: sectionRef,
     offset: ["start end", "end start"],
   })
+  // Scroll progress maps to divider position; multiple keyframes make the
+  // handle sweep back and forth so the outfit layer visibly oscillates.
   const autoX = useTransform(
     scrollYProgress,
-    [0.15, 0.45, 0.7],
-    reduce ? ["50%", "50%", "50%"] : ["12%", "60%", "88%"]
+    [...SCROLL_OSC_INPUT],
+    reduce
+      ? ["50%", "50%", "50%", "50%", "50%", "50%", "50%", "50%"]
+      : [...SCROLL_OSC_OUTPUT]
   )
 
   const handlePointer = (clientX: number) => {
@@ -93,18 +110,14 @@ export function CompareScrubSection() {
             <Divider manualPos={manualPos} autoX={autoX} reduce={!!reduce} />
 
             <div className="absolute left-4 top-4 rounded-full bg-black/55 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-white/85 backdrop-blur">
-              Before
+              Everyday
             </div>
             <div className="absolute right-4 top-4 rounded-full bg-white/95 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-900 backdrop-blur">
-              After
+              Try-on
             </div>
 
-            <div className="absolute inset-x-4 bottom-4 flex items-center justify-between rounded-2xl border border-white/10 bg-black/45 px-4 py-2 text-xs text-white/85 backdrop-blur">
-              <span className="inline-flex items-center gap-2">
-                <Zap className="size-3.5 text-emerald-300" />
-                Identity match: 0.93
-              </span>
-              <span>Generated in 11.4s</span>
+            <div className="absolute inset-x-4 bottom-4 rounded-2xl border border-white/10 bg-black/45 px-4 py-2 text-center text-xs text-white/80 backdrop-blur">
+              Demo preview — scroll scrubs the slider; hover or drag to compare.
             </div>
           </div>
         </div>
@@ -115,49 +128,16 @@ export function CompareScrubSection() {
 
 function BeforeLayer() {
   return (
-    <div className="absolute inset-0">
-      <div className="absolute inset-0 bg-[linear-gradient(160deg,#1e293b_0%,#0f172a_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(255,255,255,0.16),transparent_55%)]" />
-      {/* Studio floor */}
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent,rgba(148,163,184,0.18))]" />
-      {/* Mannequin silhouette - plain */}
-      <div className="absolute inset-0 flex items-end justify-center pb-6">
-        <svg
-          viewBox="0 0 200 320"
-          className="h-[78%] w-auto drop-shadow-[0_20px_30px_rgba(0,0,0,0.5)]"
-          aria-hidden
-        >
-          <defs>
-            <linearGradient id="cs_before_body" x1="50%" y1="0%" x2="50%" y2="100%">
-              <stop offset="0%" stopColor="#cbd5e1" stopOpacity="0.55" />
-              <stop offset="100%" stopColor="#475569" stopOpacity="0.45" />
-            </linearGradient>
-            <linearGradient id="cs_before_tee" x1="50%" y1="0%" x2="50%" y2="100%">
-              <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.55" />
-              <stop offset="100%" stopColor="#64748b" stopOpacity="0.45" />
-            </linearGradient>
-          </defs>
-          {/* Head */}
-          <ellipse cx="100" cy="40" rx="22" ry="28" fill="url(#cs_before_body)" />
-          {/* Neck */}
-          <rect x="92" y="66" width="16" height="14" fill="url(#cs_before_body)" />
-          {/* Torso in plain tee */}
-          <path
-            d="M60 82 Q100 76 140 82 L148 170 Q100 180 52 170 Z"
-            fill="url(#cs_before_tee)"
-          />
-          {/* Arms */}
-          <path d="M60 86 Q42 130 38 175 L50 177 Q56 134 72 92 Z" fill="url(#cs_before_body)" />
-          <path d="M140 86 Q158 130 162 175 L150 177 Q144 134 128 92 Z" fill="url(#cs_before_body)" />
-          {/* Hips + plain pants */}
-          <path
-            d="M58 170 Q100 178 142 170 L150 300 L116 300 L100 190 L84 300 L50 300 Z"
-            fill="url(#cs_before_body)"
-          />
-          {/* Floor shadow */}
-          <ellipse cx="100" cy="308" rx="70" ry="5" fill="rgba(0,0,0,0.55)" />
-        </svg>
-      </div>
+    <div className="absolute inset-0 bg-slate-900">
+      <Image
+        src={COMPARE_BASE_SRC}
+        alt="Model in everyday outfit"
+        fill
+        className="object-cover"
+        style={COMPARE_IMG_POSITION}
+        sizes="(max-width: 896px) 100vw, 896px"
+        priority
+      />
     </div>
   )
 }
@@ -186,68 +166,18 @@ function AfterLayer({
 
   return (
     <motion.div
-      className="absolute inset-0"
+      className="absolute inset-0 bg-slate-900"
       style={useAuto ? { clipPath: autoClip } : { clipPath: staticClip }}
     >
-      <div className="absolute inset-0 bg-[linear-gradient(160deg,#1a1242_0%,#0c1838_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(180,200,255,0.45),transparent_55%)]" />
-      {/* Spotlight */}
-      <div className="absolute left-1/2 top-[10%] h-[70%] w-[55%] -translate-x-1/2 rounded-full opacity-85 [background:radial-gradient(closest-side,rgba(255,240,220,0.5),transparent_70%)]" />
-      {/* Runway floor */}
-      <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,transparent,rgba(180,200,255,0.25))]" />
-      {/* Styled figure */}
-      <div className="absolute inset-0 flex items-end justify-center pb-6">
-        <svg
-          viewBox="0 0 200 320"
-          className="h-[78%] w-auto drop-shadow-[0_22px_40px_rgba(10,20,60,0.75)]"
-          aria-hidden
-        >
-          <defs>
-            <linearGradient id="cs_after_body" x1="50%" y1="0%" x2="50%" y2="100%">
-              <stop offset="0%" stopColor="#1c2642" />
-              <stop offset="100%" stopColor="#0e1428" />
-            </linearGradient>
-            <linearGradient id="cs_after_outfit" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#F472B6" />
-              <stop offset="50%" stopColor="#60A5FA" />
-              <stop offset="100%" stopColor="#34D399" />
-            </linearGradient>
-            <linearGradient id="cs_after_skirt" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#60A5FA" />
-              <stop offset="100%" stopColor="#A855F7" />
-            </linearGradient>
-            <radialGradient id="cs_after_face" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="rgba(255,230,200,0.9)" />
-              <stop offset="100%" stopColor="rgba(255,230,200,0)" />
-            </radialGradient>
-          </defs>
-          {/* Head + soft glow */}
-          <circle cx="100" cy="42" r="40" fill="url(#cs_after_face)" opacity="0.5" />
-          <ellipse cx="100" cy="40" rx="22" ry="28" fill="url(#cs_after_body)" />
-          <rect x="92" y="66" width="16" height="14" fill="url(#cs_after_body)" />
-          {/* Styled top */}
-          <path
-            d="M60 82 Q100 76 140 82 L148 170 Q100 182 52 170 Z"
-            fill="url(#cs_after_outfit)"
-          />
-          {/* Waist highlight */}
-          <path d="M56 150 Q100 162 144 150" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
-          {/* Arms */}
-          <path d="M60 86 Q42 130 38 175 L50 177 Q56 134 72 92 Z" fill="url(#cs_after_body)" />
-          <path d="M140 86 Q158 130 162 175 L150 177 Q144 134 128 92 Z" fill="url(#cs_after_body)" />
-          {/* Flowing skirt */}
-          <path
-            d="M58 168 Q100 180 142 168 L170 300 L30 300 Z"
-            fill="url(#cs_after_skirt)"
-            opacity="0.92"
-          />
-          {/* Skirt shine */}
-          <path d="M85 180 L80 298" stroke="rgba(255,255,255,0.2)" strokeWidth="2" />
-          <path d="M115 180 L122 298" stroke="rgba(255,255,255,0.2)" strokeWidth="2" />
-          {/* Floor shadow */}
-          <ellipse cx="100" cy="308" rx="80" ry="6" fill="rgba(0,0,0,0.55)" />
-        </svg>
-      </div>
+      <Image
+        src={COMPARE_OUTFIT_SRC}
+        alt="Model in try-on outfit"
+        fill
+        className="object-cover"
+        style={COMPARE_IMG_POSITION}
+        sizes="(max-width: 896px) 100vw, 896px"
+        priority
+      />
     </motion.div>
   )
 }

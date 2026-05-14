@@ -12,13 +12,14 @@ import {
 import { Camera, ImageDown, ShieldCheck, Sparkles } from "lucide-react"
 
 /**
- * Cinematic rampwalk scrollytelling.
+ * Cinematic scrollytelling.
  *
- * Pins a full-bleed cinema stage. A landscape runway clip at
- * /public/landing/rampwalk.mp4 is scroll-scrubbed: video.currentTime is
- * driven by scroll progress, with seeks coalesced into one per animation
- * frame so fast trackpad scrolls don't flood the decoder. Scene narrative
- * cards fade in/out alongside the scrubbed video.
+ * Pins a full-bleed cinema stage. The clip at
+ * /public/landing/scrollytelling.mp4 is scroll-scrubbed: `video.currentTime`
+ * tracks scroll progress, with seeks coalesced to one per animation frame
+ * so fast trackpad scrolls stay smooth. Narrative cards fade with each act.
+ *
+ * If the video fails to load, an SVG runway silhouette is shown instead.
  *
  * Collapses to a static stacked layout when prefers-reduced-motion is set.
  */
@@ -95,15 +96,14 @@ function useSceneOpacity(
   )
 }
 
-const RAMPWALK_VIDEO_SRC = "/landing/rampwalk.mp4"
+const SCROLL_STORY_VIDEO_SRC = "/landing/scrollytelling.mp4"
 
 export function ScrollStory() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const reduce = useReducedMotion()
 
-  // Raw scrollYProgress, no spring. A spring layer made the video drift
-  // behind the cursor on fast scrolls (visible lag); coalesced rAF seeks
-  // in CinemaVideo handle aggressive scrolling without the smoothing.
+  // Raw scrollYProgress, no spring. Video seeks are coalesced to rAF so
+  // scrubbing stays smooth on fast scrolls.
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ["start start", "end end"],
@@ -133,8 +133,8 @@ export function ScrollStory() {
             </span>
           </h2>
           <p className="mt-3 text-sm text-white/70">
-            Scroll to watch the model walk through the four moments of a
-            GradFiT try-on.
+            Scroll to scrub the film—full motion, outfit changes, locked to the
+            four beats of a GradFiT try-on.
           </p>
         </div>
       </div>
@@ -153,7 +153,7 @@ export function ScrollStory() {
               : "sticky top-16 md:top-20 h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)] overflow-hidden"
           }
         >
-          {/* z-0: video (or SVG fallback) */}
+          {/* z-0: scroll-scrubbed video (SVG fallback if asset fails) */}
           <CinemaStage progress={scrollYProgress} reduce={!!reduce} />
 
           {/* z-5: gradient bands for narrative-card legibility. Top + bottom
@@ -208,7 +208,7 @@ export function ScrollStory() {
 }
 
 /* ================================================================== */
-/* Cinema stage: full-bleed video with SVG fallback                   */
+/* Cinema stage: full-bleed scroll-scrubbed video + SVG fallback         */
 /* ================================================================== */
 
 function CinemaStage({
@@ -252,11 +252,6 @@ function CinemaVideo({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [ready, setReady] = useState(false)
-  // rAF coalescing: scroll fires hundreds of motion events per second on
-  // fast trackpad flicks. Setting video.currentTime on each one queues
-  // seeks the decoder can't service in time, producing the "laggy" feel.
-  // Instead, we stash the latest target and apply at most one seek per
-  // animation frame (~60Hz).
   const targetTimeRef = useRef(0)
   const rafIdRef = useRef<number | null>(null)
 
@@ -266,12 +261,10 @@ function CinemaVideo({
 
     const onMeta = () => {
       setReady(true)
-      // Paint the first frame immediately so the stage isn't a black box
-      // before the user scrolls.
       try {
         v.currentTime = 0.01
       } catch {
-        // some browsers throw if metadata isn't loaded yet — ignore
+        /* ignore */
       }
     }
     const onLoadedData = () => setReady(true)
@@ -284,7 +277,7 @@ function CinemaVideo({
     try {
       v.load()
     } catch {
-      // ignore
+      /* ignore */
     }
 
     return () => {
@@ -303,16 +296,16 @@ function CinemaVideo({
     if (!vid || !ready || reduce) return
     const duration = vid.duration
     if (!duration || !isFinite(duration)) return
-    targetTimeRef.current = Math.max(0, Math.min(v * duration, duration - 0.05))
+    targetTimeRef.current = Math.max(0, Math.min(v * duration, duration - 0.04))
     if (rafIdRef.current == null) {
       rafIdRef.current = requestAnimationFrame(() => {
         rafIdRef.current = null
         const target = targetTimeRef.current
-        if (Math.abs(vid.currentTime - target) > 0.03) {
+        if (Math.abs(vid.currentTime - target) > 0.02) {
           try {
             vid.currentTime = target
           } catch {
-            // safari sometimes throws if we seek before metadata fully stable
+            /* Safari can throw on aggressive seeks */
           }
         }
       })
@@ -323,7 +316,7 @@ function CinemaVideo({
     <div className="absolute inset-0 bg-slate-950">
       <video
         ref={videoRef}
-        src={RAMPWALK_VIDEO_SRC}
+        src={SCROLL_STORY_VIDEO_SRC}
         muted
         playsInline
         preload="auto"
@@ -331,7 +324,7 @@ function CinemaVideo({
         tabIndex={-1}
         aria-hidden
         className={
-          "absolute inset-0 h-full w-full object-cover transition-opacity duration-500 " +
+          "absolute inset-0 h-full w-full object-cover [transform:translateZ(0)] transition-opacity duration-500 " +
           (ready ? "opacity-100" : "opacity-0")
         }
       />
