@@ -52,7 +52,7 @@ function TryOnStudioInner() {
     null
   );
   const [personUrl, setPersonUrl] = useState<string | null>(null);
-  const [quality, setQuality] = useState<Quality>("balanced");
+  const [quality, setQuality] = useState<Quality>("fast");
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [state, setState] =

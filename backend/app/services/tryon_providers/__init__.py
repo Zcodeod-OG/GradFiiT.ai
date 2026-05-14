@@ -6,10 +6,8 @@ calls :func:`get_tryon_provider` instead of hard-coding a single backend.
 Routing rules (enforced by :func:`_resolve_provider_name`):
 
 * If the request comes from the Chrome extension (``source=extension``
-  flag), pick :data:`settings.TRYON_PROVIDER_EXTENSION` (default
-  ``fashn``) for sub-second inference.
-* Otherwise, pick :data:`settings.TRYON_PROVIDER` (default
-  ``catvton_flux`` -- CatVTON-Flux on the SageMaker endpoint).
+  flag), pick :data:`settings.TRYON_PROVIDER_EXTENSION` (default ``fashn``).
+* Otherwise, pick :data:`settings.TRYON_PROVIDER` (default ``fashn``).
 * If the chosen provider's credentials are missing, walk
   :data:`settings.TRYON_PROVIDER_FALLBACK_LADDER` and pick the first
   credentialed provider rather than 5xx-ing.
@@ -149,7 +147,7 @@ def _provider_is_available(name: str) -> bool:
 def _fallback_ladder() -> list[str]:
     raw = (settings.TRYON_PROVIDER_FALLBACK_LADDER or "").strip()
     if not raw:
-        return ["catvton_flux", "kolors_vto", "fashn", "flux_sagemaker"]
+        return ["kolors_vto", "catvton_flux", "fashn", "flux_sagemaker", "replicate_legacy"]
     out: list[str] = []
     for slug in raw.split(","):
         s = slug.strip().lower()
@@ -172,7 +170,7 @@ def _resolve_provider_name(
     if src == TRYON_SOURCE_EXTENSION:
         candidate = (settings.TRYON_PROVIDER_EXTENSION or "fashn").strip().lower()
     else:
-        candidate = (settings.TRYON_PROVIDER or "catvton_flux").strip().lower()
+        candidate = (settings.TRYON_PROVIDER or "fashn").strip().lower()
     candidate = _canonical_provider_name(candidate)
 
     if _provider_is_available(candidate):

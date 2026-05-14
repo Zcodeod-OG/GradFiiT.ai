@@ -479,7 +479,7 @@ export const tryonApi = {
   generate: (
     garmentId: number,
     personImageUrl: string | undefined,
-    quality: string = "balanced",
+    quality: string = "fast",
     mode: TryOnMode = "2d"
   ) =>
     api.post("/api/tryon/generate", {

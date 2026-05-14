@@ -404,7 +404,7 @@ export default function Page() {
         const response = await tryonApi.generate(
           garmentId,
           undefined, // backend will use the saved default photo
-          "balanced",
+          "fast",
           (preferredMode || "2d") as TryOnMode
         )
         const tryonId = response.data?.data?.tryon_id

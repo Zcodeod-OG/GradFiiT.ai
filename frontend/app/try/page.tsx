@@ -71,12 +71,10 @@ const qualityOptions: Array<{
   costUsd: string
   xp: number
 }> = [
-  // Cost / time figures track Fashn pricing + our Layer-2 stack:
-  // fast = single sample, no postprocess; balanced = 2 samples + identity
-  // check + GFPGAN + Real-ESRGAN; best = tryon-max + full Layer-2.
-  { value: "fast", label: "Fast", time: "8-15s", description: "One pass, instant preview", costUsd: "$0.04", xp: 10 },
-  { value: "balanced", label: "Balanced", time: "30-45s", description: "Multi-sample + identity match", costUsd: "$0.08", xp: 20 },
-  { value: "best", label: "Best", time: "60-90s", description: "Highest fidelity, hero-ready", costUsd: "$0.18", xp: 30 },
+  // Fashn primary: fast + balanced skip Layer-2 by default (POSTPROCESS_LANES=best).
+  { value: "fast", label: "Fast", time: "~4–8s", description: "Single Fashn pass, raw output", costUsd: "~$0.04", xp: 10 },
+  { value: "balanced", label: "Balanced", time: "~6–10s", description: "Fashn balanced mode, raw output", costUsd: "~$0.06", xp: 20 },
+  { value: "best", label: "Best", time: "~15–35s", description: "tryon-max + quality stack (finetuned path later)", costUsd: "~$0.12+", xp: 30 },
 ]
 
 const fastProcessingSteps: ProcessingStep[] = [
@@ -99,7 +97,7 @@ const fastProcessingSteps: ProcessingStep[] = [
   {
     id: 2,
     name: "Generating try-on",
-    description: "Running OOTDiffusion only...",
+    description: "Running Fashn virtual try-on...",
     icon: Star,
     completed: false,
     inProgress: false,
@@ -219,7 +217,7 @@ function TryOnPageInner() {
   const [resultGarmentId, setResultGarmentId] = useState<number | null>(null)
   const [resultTryonId, setResultTryonId] = useState<number | null>(null)
   const [tryonMode, setTryonMode] = useState<TryOnMode>("2d")
-  const [quality, setQuality] = useState<QualityOption>("balanced")
+  const [quality, setQuality] = useState<QualityOption>("fast")
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingProgress, setProcessingProgress] = useState(0)
   const [currentStep, setCurrentStep] = useState(0)
@@ -684,7 +682,7 @@ function TryOnPageInner() {
     setError(null)
 
     // Set estimated time based on quality
-    const timeEstimates: Record<QualityOption, number> = { fast: 30, balanced: 60, best: 120 }
+    const timeEstimates: Record<QualityOption, number> = { fast: 10, balanced: 12, best: 35 }
     const totalTime = timeEstimates[quality]
     setEstimatedTimeRemaining(totalTime)
 
@@ -1530,7 +1528,7 @@ function TryOnPageInner() {
               <p className="text-xs text-muted-foreground">
                 {tryonMode === "3d"
                   ? "3D mode uses SMPL + PIFuHD avatar fitting with 360 model output."
-                  : "2D mode uses OOTDiffusion pipeline for fast photorealistic try-ons."}
+                  : "2D mode uses the Fashn API for fast photorealistic try-ons."}
               </p>
 
               {/* Processing Status */}

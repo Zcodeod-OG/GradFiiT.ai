@@ -161,31 +161,29 @@ class Settings(BaseSettings):
     # ==================== Try-On Provider Selection ====================
 
     TRYON_PROVIDER: str = Field(
-        default="catvton_flux",
+        default="fashn",
         description=(
-            "Active try-on provider for the main web product. One of: "
-            "catvton_flux (CatVTON-Flux on SageMaker, default; alias "
-            "'hunyuan_vto' still resolves here), "
-            "kolors_vto (Kling Kolors-VTO via Replicate), "
-            "flux_sagemaker (legacy bundled FLUX), "
-            "fashn, replicate_legacy."
+            "Active try-on provider for web/API (2D). Default fashn.ai for "
+            "low-latency single-call VTON. Alternatives: catvton_flux "
+            "(SageMaker; alias 'hunyuan_vto'), kolors_vto (Replicate), "
+            "flux_sagemaker, replicate_legacy."
         ),
     )
 
     TRYON_PROVIDER_EXTENSION: str = Field(
         default="fashn",
         description=(
-            "Try-on provider used for requests originating from the Chrome "
-            "extension (source=extension). Defaults to fashn for sub-second "
-            "latency. Falls back to TRYON_PROVIDER when fashn is not configured."
+            "Try-on provider for Chrome extension (source=extension). "
+            "Defaults to fashn; uses TRYON_PROVIDER_FALLBACK_LADDER if "
+            "fashn is not configured."
         ),
     )
 
     TRYON_PROVIDER_FALLBACK_LADDER: str = Field(
-        default="catvton_flux,kolors_vto,fashn,flux_sagemaker",
+        default="kolors_vto,catvton_flux,flux_sagemaker,replicate_legacy",
         description=(
-            "Comma-separated provider slugs in priority order for the web "
-            "fallback ladder. The first credentialed provider wins."
+            "When the primary provider (TRYON_PROVIDER or extension override) "
+            "lacks credentials, pick the first credentialed slug in this list."
         ),
     )
 
@@ -296,8 +294,8 @@ class Settings(BaseSettings):
     )
 
     FASHN_POLL_INTERVAL_SECONDS: float = Field(
-        default=1.5,
-        description="Polling interval (seconds) when waiting for Fashn predictions"
+        default=0.75,
+        description="Polling interval (seconds) when waiting for Fashn predictions (no webhook)"
     )
 
     FASHN_MAX_WAIT_SECONDS: int = Field(
@@ -321,13 +319,16 @@ class Settings(BaseSettings):
     )
 
     FASHN_BEST_NUM_SAMPLES: int = Field(
-        default=2,
-        description="Number of samples to draw on the best lane (we pick the best via CLIP)"
+        default=1,
+        description=(
+            "Samples on the best lane (tryon-max). Lower = faster until a "
+            "custom finetuned path replaces premium quality."
+        ),
     )
 
     FASHN_BALANCED_NUM_SAMPLES: int = Field(
-        default=2,
-        description="Number of samples to draw on the balanced lane (postprocessor picks the best)"
+        default=1,
+        description="Samples on the balanced lane (tryon-v1.6); 1 minimizes latency"
     )
 
     # ==================== Try-On Quality Layers (L1 input gate + L2 postprocess) ====================
@@ -341,8 +342,12 @@ class Settings(BaseSettings):
     )
 
     POSTPROCESS_LANES: str = Field(
-        default="balanced,best",
-        description="Comma-separated list of quality lanes that get post-processing (fast lane stays raw for latency)"
+        default="best",
+        description=(
+            "Quality lanes that run Layer-2 postprocess (identity/face/upscale). "
+            "fast+balanced stay raw for sub-10s Fashn; best lane gets polish until "
+            "a dedicated finetuned model ships."
+        ),
     )
 
     INPUT_GATE_ENABLED: bool = Field(
@@ -932,7 +937,7 @@ class Settings(BaseSettings):
     def validate_tryon_provider(cls, v: str) -> str:
         """Validate try-on provider selection. Accepts the deprecated
         ``hunyuan_vto`` slug and rewrites to ``catvton_flux``."""
-        normalized = (v or "catvton_flux").strip().lower()
+        normalized = (v or "fashn").strip().lower()
         if normalized == "hunyuan_vto":
             normalized = "catvton_flux"
         allowed = [
