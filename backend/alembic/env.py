@@ -15,6 +15,7 @@ from app.config import settings
 
 # Import all models so Base.metadata is populated
 from app.models.user import User  # noqa: F401
+from app.models.oauth_identity import OAuthIdentity  # noqa: F401
 from app.models.garment import Garment  # noqa: F401
 from app.models.tryon import TryOn  # noqa: F401
 

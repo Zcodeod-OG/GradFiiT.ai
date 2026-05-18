@@ -19,6 +19,7 @@ from app.database import engine
 from app.api.routes import (
     affiliate,
     auth,
+    auth_oauth,
     billing,
     brand_dna,
     garments,
@@ -156,6 +157,7 @@ async def request_logging_middleware(request: Request, call_next: Callable):
 
 # Routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(auth_oauth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(user.router, tags=["user"])
 app.include_router(garments.router, prefix="/api/garments", tags=["garments"])
 app.include_router(tryon.router, tags=["tryon"])

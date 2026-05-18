@@ -1,7 +1,8 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import type { SubscriptionTier, TryOnMode } from "@/lib/plans";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // 60s covers a warm round-trip comfortably. Render's free-tier cold starts
 // (30–60s) are handled by the retry path below — the first attempt is allowed

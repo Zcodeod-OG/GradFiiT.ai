@@ -9,7 +9,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=True)
     full_name = Column(String, nullable=True)
     subscription_tier = Column(String, nullable=False, default="free_2d")
     preferred_tryon_mode = Column(String, nullable=False, default="2d")
@@ -53,4 +53,7 @@ class User(Base):
     garments = relationship("Garment", back_populates="user")
     tryons = relationship("TryOn", back_populates="user")
     affiliate_clicks = relationship("AffiliateClick", back_populates="user")
+    oauth_identities = relationship(
+        "OAuthIdentity", back_populates="user", cascade="all, delete-orphan"
+    )
 

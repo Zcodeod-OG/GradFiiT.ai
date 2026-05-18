@@ -50,7 +50,7 @@ class AvatarBuildRequest(BaseModel):
 
 class UserInDB(UserBase):
     id: int
-    hashed_password: str
+    hashed_password: Optional[str] = None
     is_superuser: bool
     created_at: datetime
     updated_at: Optional[datetime] = None

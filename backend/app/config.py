@@ -573,7 +573,28 @@ class Settings(BaseSettings):
         default=30,
         description="Access token expiration in minutes"
     )
-    
+
+    # ==================== OAuth (Google / GitHub / Facebook) ====================
+
+    OAUTH_STATE_SECRET: Optional[str] = Field(
+        default=None,
+        description="HS256 secret for short-lived OAuth state JWTs; defaults to SECRET_KEY",
+    )
+
+    GOOGLE_CLIENT_ID: Optional[str] = Field(default=None, description="Google OAuth 2.0 Web client ID")
+    GOOGLE_CLIENT_SECRET: Optional[str] = Field(default=None, description="Google OAuth client secret")
+
+    GITHUB_CLIENT_ID: Optional[str] = Field(default=None, description="GitHub OAuth App client ID")
+    GITHUB_CLIENT_SECRET: Optional[str] = Field(default=None, description="GitHub OAuth App client secret")
+
+    FACEBOOK_CLIENT_ID: Optional[str] = Field(default=None, description="Facebook Login app ID")
+    FACEBOOK_CLIENT_SECRET: Optional[str] = Field(default=None, description="Facebook app secret")
+
+    OAUTH_STATE_EXPIRE_MINUTES: int = Field(
+        default=10,
+        description="Max age for OAuth state parameter (minutes)",
+    )
+
     # ==================== CORS Settings ====================
     
     CORS_ORIGINS: List[str] = Field(
@@ -1050,6 +1071,10 @@ class Settings(BaseSettings):
             "REDIS_URL",
             "AWS_SECRET_ACCESS_KEY",
             "SECRET_KEY",
+            "OAUTH_STATE_SECRET",
+            "GOOGLE_CLIENT_SECRET",
+            "GITHUB_CLIENT_SECRET",
+            "FACEBOOK_CLIENT_SECRET",
             "REPLICATE_API_TOKEN",
             "FASHN_API_KEY",
             "SMTP_PASSWORD",

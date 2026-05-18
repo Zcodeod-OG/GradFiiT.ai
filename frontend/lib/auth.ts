@@ -33,6 +33,7 @@ type AuthStore = {
   isLoading: boolean;
 
   login: (email: string, password: string) => Promise<void>;
+  loginWithOAuthToken: (token: string) => Promise<void>;
   register: (
     payload: {
       email: string;
@@ -62,6 +63,13 @@ export const useAuth = create<AuthStore>()(
         await get().loadUser();
         // Fire-and-forget warmup so the SageMaker try-on endpoint is hot by
         // the time the user reaches /try. Server debounces to once per 60s.
+        void tryonApi.warmup().catch(() => {});
+      },
+
+      loginWithOAuthToken: async (token) => {
+        localStorage.setItem("auth_token", token);
+        set({ token, isAuthenticated: true });
+        await get().loadUser();
         void tryonApi.warmup().catch(() => {});
       },
 

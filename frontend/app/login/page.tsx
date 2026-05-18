@@ -8,7 +8,7 @@ import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { uploadApi, userApi } from "@/lib/api"
+import { API_BASE_URL, uploadApi, userApi } from "@/lib/api"
 import { getApiErrorMessage } from "@/lib/api-error"
 import { useAuth } from "@/lib/auth"
 import { TIER_LABELS, TIER_TO_ALLOWED_MODES, type SubscriptionTier, type TryOnMode } from "@/lib/plans"
@@ -104,6 +104,53 @@ export default function LoginPage() {
 
         <Card className="bg-white/85 border-border/80 backdrop-blur-sm">
           <CardContent className="p-6">
+            <div className="space-y-2 mb-4">
+              <p className="text-center text-xs text-muted-foreground uppercase tracking-wide">
+                Continue with
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    window.location.href = `${API_BASE_URL}/api/auth/oauth/google/authorize`
+                  }}
+                >
+                  Google
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    window.location.href = `${API_BASE_URL}/api/auth/oauth/github/authorize`
+                  }}
+                >
+                  GitHub
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    window.location.href = `${API_BASE_URL}/api/auth/oauth/facebook/authorize`
+                  }}
+                >
+                  Facebook
+                </Button>
+              </div>
+            </div>
+            <div className="relative mb-4">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border/60" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-white/85 px-2 text-muted-foreground">
+                  {isRegisterMode ? "Or register with email" : "Or with email"}
+                </span>
+              </div>
+            </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               {isRegisterMode && (
                 <>
