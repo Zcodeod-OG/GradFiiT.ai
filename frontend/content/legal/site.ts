@@ -15,6 +15,6 @@ export const LEGAL = {
 export type LegalSection = {
   id: string;
   title: string;
-  paragraphs: string[];
+  paragraphs?: string[];
   bullets?: string[];
 };
