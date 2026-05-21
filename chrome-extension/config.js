@@ -14,17 +14,16 @@
  */
 
 (function () {
+  // __GRADFIT_STORE_BUILD__ - set to "1" by scripts/package-store.sh for
+  // Chrome/Edge/Opera/Brave submissions (omits localhost dev origins).
+  var STORE_BUILD = __GRADFIT_STORE_BUILD__ === "1";
+
   // __GRADFIT_APP_URL__ - replaced at build time by scripts/build.sh
   var APP_URL = "https://gradfit.tech";
   // __GRADFIT_API_URL__ - replaced at build time by scripts/build.sh
   var API_URL = "https://gradfit-ai.onrender.com";
 
-  // Dev origins are intentionally included even in production builds.
-  // They only take effect when the user actually browses these URLs,
-  // and dev URLs never appear on a normal end user's machine. This is
-  // what lets the same unpacked extension drive local-dev (sign in on
-  // http://localhost:3000) and production (sign in on gradfit.tech)
-  // without rebuilding config.js between environments.
+  // Dev origins for local unpacked builds only (stripped when STORE_BUILD).
   var DEV_APP_URL = "http://localhost:3000";
   var DEV_API_URL = "http://localhost:8000";
 
@@ -56,20 +55,26 @@
   }
 
   var prodOrigin = safeOrigin(APP_URL);
-  var devOrigin = safeOrigin(DEV_APP_URL);
-  var devLoopback = "http://127.0.0.1:3000";
-  var devLoopbackApi = DEV_API_URL.replace("localhost", "127.0.0.1");
-
-  var rawOrigins = [prodOrigin, devOrigin, devLoopback].filter(Boolean);
+  var rawOrigins = [prodOrigin];
+  if (!STORE_BUILD) {
+    var devOrigin = safeOrigin(DEV_APP_URL);
+    var devLoopback = "http://127.0.0.1:3000";
+    if (devOrigin) rawOrigins.push(devOrigin);
+    if (devLoopback) rawOrigins.push(devLoopback);
+  }
   var appOrigins = [];
   var apiUrlByOrigin = {};
 
   rawOrigins.forEach(function (origin) {
-    var api;
-    if (origin === prodOrigin) api = API_URL;
-    else if (origin === devOrigin) api = DEV_API_URL;
-    else if (origin === devLoopback) api = devLoopbackApi;
-    else api = API_URL;
+    var api = API_URL;
+    if (!STORE_BUILD && origin === safeOrigin(DEV_APP_URL)) {
+      api = DEV_API_URL;
+    } else if (
+      !STORE_BUILD &&
+      origin === "http://127.0.0.1:3000"
+    ) {
+      api = DEV_API_URL.replace("localhost", "127.0.0.1");
+    }
 
     variantsOf(origin).forEach(function (v) {
       if (appOrigins.indexOf(v) === -1) appOrigins.push(v);

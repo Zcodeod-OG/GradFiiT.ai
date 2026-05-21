@@ -1,103 +1,75 @@
-# TryOn.AI Chrome Extension
+# GradFiT Chrome Extension
 
-A Chrome extension (Manifest V3) that enables virtual try-on functionality on any fashion website.
+Manifest V3 browser extension for virtual try-on on fashion websites. Works with the GradFiT web app at [gradfit.tech](https://gradfit.tech).
 
 ## Features
 
-- 🔍 Automatic clothing item detection on fashion websites
-- 🎯 Click any clothing item to try it on instantly
-- ✨ Beautiful overlay highlights for detected items
-- 📱 Works on all major fashion e-commerce sites
-- 🚀 One-click integration with TryOn.AI platform
+- Try on from product images on retailer sites (sidebar + quick preview)
+- Closet-aware style recommendations (glow highlight)
+- Combo Studio (top + bottom across tabs)
+- Buy-this affiliate links after try-on
+- Sign-in sync with gradfit.tech
 
-## Installation
+## Development install
 
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable "Developer mode" (toggle in top right)
-3. Click "Load unpacked"
-4. Select the `chrome-extension` folder
-5. The extension is now installed!
+1. Open `chrome://extensions/`
+2. Enable **Developer mode**
+3. **Load unpacked** → select this `chrome-extension` folder
+4. Sign in at http://localhost:3000 or https://gradfit.tech (token syncs automatically)
 
-## Setup
+## Configuration
 
-### Icons
+URLs are set in [`config.js`](config.js). For local dev, defaults include `localhost` origins. To point at production:
 
-You need to create the following icon files in the `assets/` folder:
+```bash
+GRADFIT_APP_URL=https://gradfit.tech \
+GRADFIT_API_URL=https://gradfit-ai.onrender.com \
+bash scripts/build.sh
+```
 
-- `icon-16.png` - 16x16 pixels
-- `icon-48.png` - 48x48 pixels  
-- `icon-128.png` - 128x128 pixels
+## Store publishing (Chrome, Edge, Opera, Brave)
 
-You can use any image editing tool to create these. The icons should represent your TryOn.AI branding.
+Full kit: **[store/README.md](store/README.md)**
 
-## Usage
+Build submission ZIP (production only, no localhost):
 
-1. Navigate to any fashion website
-2. Click the TryOn.AI extension icon in your browser toolbar
-3. Click "Detect Clothing Items" to scan the page
-4. Hover over detected items to see the "Try On" button
-5. Click "Try On" to open the item in TryOn.AI
+```bash
+GRADFIT_APP_URL=https://gradfit.tech \
+GRADFIT_API_URL=https://gradfit-ai.onrender.com \
+bash scripts/package-store.sh
+```
 
-## File Structure
+Output: `dist/gradfit-extension-v<version>.zip`
+
+Required public URLs before submit:
+
+| URL | Purpose |
+|-----|---------|
+| https://gradfit.tech/extension/privacy | Store privacy policy |
+| https://gradfit.tech/support | Support |
+| https://gradfit.tech | Homepage |
+
+## File structure
 
 ```
 chrome-extension/
-├── manifest.json          # Extension manifest (Manifest V3)
+├── manifest.json
+├── config.js              # App/API URLs (build-time)
 ├── popup/
-│   ├── popup.html        # Popup UI HTML
-│   ├── popup.js          # Popup logic
-│   └── popup.css         # Popup styles
-├── content/
-│   ├── content.js        # Content script (runs on web pages)
-│   └── overlay.css       # Styles for highlights/overlays
-├── background/
-│   └── background.js     # Service worker (background tasks)
-├── assets/
-│   ├── icon-16.png       # Extension icon (16x16)
-│   ├── icon-48.png       # Extension icon (48x48)
-│   └── icon-128.png      # Extension icon (128x128)
-└── utils/
-    └── imageDetector.js  # Image detection utilities
+├── content/               # Page overlays + sidebar
+├── background/            # Service worker
+├── assets/                # Icons 16/48/128
+├── shared/brand.css
+├── scripts/
+│   ├── build.sh           # Rewrite config URLs
+│   └── package-store.sh   # Store ZIP
+└── store/                 # Listing copy, checklists, privacy
 ```
 
-## Manifest Features
+## Icons
 
-- **Manifest Version**: 3 (latest)
-- **Permissions**: 
-  - `activeTab` - Access current tab
-  - `storage` - Save settings/preferences
-  - `scripting` - Inject scripts
-- **Host Permissions**: All URLs (for universal compatibility)
-- **Content Script**: Runs on all URLs
-- **Background**: Service worker for background tasks
-- **Popup**: Default popup HTML interface
-
-## Development
-
-To modify the extension:
-
-1. Edit the relevant files
-2. Go to `chrome://extensions/`
-3. Click the refresh icon on the extension card
-4. Test your changes
-
-## Testing
-
-1. Load the extension in Chrome (Developer mode)
-2. Visit a fashion website (e.g., Amazon, Etsy, Shopify stores)
-3. Click the extension icon
-4. Click "Detect Clothing Items"
-5. Verify that clothing images are highlighted
-6. Click "Try On" to test the flow
-
-## Notes
-
-- The extension uses content scripts to detect clothing items on web pages
-- Image detection uses heuristics (alt text, dimensions, context)
-- For production, consider integrating with ML models for better detection
-- The extension opens `https://tryon.ai/try` with the image URL parameter
+`assets/icon-16.png`, `icon-48.png`, `icon-128.png` (required for stores).
 
 ## License
 
-Copyright © 2024 TryOn.AI. All rights reserved.
-
+Copyright © GradFiT. All rights reserved.

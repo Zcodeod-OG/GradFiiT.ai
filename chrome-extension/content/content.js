@@ -14,7 +14,7 @@
     // Must comfortably exceed the SW's 180s poll window in background.js
     // (Fashn's own max_wait is also 180s). 210s gives ~30s headroom for
     // the final sendResponse round-trip so we never cut the SW off early.
-    quickTryOnTimeoutMs: 210000, themeRefreshThrottleMs: 1500,
+    quickTryOnTimeoutMs: 210000,
   };
 
   var imageOverlays = new Map();
@@ -25,7 +25,6 @@
   var intersectionObserver = null;
   var intersectionMutationObserver = null;
   var initDone = false;
-  var sidebarThemeState = { lastAppliedAt: 0 };
   var spaCheckInterval = null;
   var contextInvalidated = false;
 
@@ -224,240 +223,8 @@
 
   function debounce(fn, wait) { var t; return function() { var a = arguments, c = this; clearTimeout(t); t = setTimeout(function() { fn.apply(c, a); }, wait); }; }
 
-  function clampColor(v) {
-    return Math.max(0, Math.min(255, Math.round(v)));
-  }
-
-  function parseCssColor(value) {
-    if (!value || value === 'transparent' || value === 'inherit') return null;
-    var color = value.trim().toLowerCase();
-    var m = null;
-
-    m = color.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/);
-    if (m) {
-      return {
-        r: clampColor(parseInt(m[1], 10)),
-        g: clampColor(parseInt(m[2], 10)),
-        b: clampColor(parseInt(m[3], 10)),
-        a: m[4] !== undefined ? Math.max(0, Math.min(1, parseFloat(m[4]))) : 1,
-      };
-    }
-
-    m = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-    if (m) {
-      var hex = m[1];
-      if (hex.length === 3) {
-        return {
-          r: parseInt(hex[0] + hex[0], 16),
-          g: parseInt(hex[1] + hex[1], 16),
-          b: parseInt(hex[2] + hex[2], 16),
-          a: 1,
-        };
-      }
-      return {
-        r: parseInt(hex.slice(0, 2), 16),
-        g: parseInt(hex.slice(2, 4), 16),
-        b: parseInt(hex.slice(4, 6), 16),
-        a: 1,
-      };
-    }
-
-    return null;
-  }
-
-  function rgbToCss(c) {
-    return 'rgb(' + c.r + ', ' + c.g + ', ' + c.b + ')';
-  }
-
-  function rgbToHsl(c) {
-    var r = c.r / 255;
-    var g = c.g / 255;
-    var b = c.b / 255;
-    var max = Math.max(r, g, b);
-    var min = Math.min(r, g, b);
-    var h = 0;
-    var s = 0;
-    var l = (max + min) / 2;
-
-    if (max !== min) {
-      var d = max - min;
-      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-      switch (max) {
-        case r:
-          h = (g - b) / d + (g < b ? 6 : 0);
-          break;
-        case g:
-          h = (b - r) / d + 2;
-          break;
-        default:
-          h = (r - g) / d + 4;
-      }
-      h *= 60;
-    }
-
-    return { h: h, s: s, l: l };
-  }
-
-  function hslToRgb(h, s, l) {
-    var hue = ((h % 360) + 360) % 360;
-    var sat = Math.max(0, Math.min(1, s));
-    var light = Math.max(0, Math.min(1, l));
-
-    if (sat === 0) {
-      var gray = clampColor(light * 255);
-      return { r: gray, g: gray, b: gray, a: 1 };
-    }
-
-    function channel(n) {
-      var k = (n + hue / 30) % 12;
-      var a = sat * Math.min(light, 1 - light);
-      return clampColor((light - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)))) * 255);
-    }
-
-    return { r: channel(0), g: channel(8), b: channel(4), a: 1 };
-  }
-
-  function mixColor(a, b, amount) {
-    var t = Math.max(0, Math.min(1, amount));
-    return {
-      r: clampColor(a.r * (1 - t) + b.r * t),
-      g: clampColor(a.g * (1 - t) + b.g * t),
-      b: clampColor(a.b * (1 - t) + b.b * t),
-      a: 1,
-    };
-  }
-
-  function relativeLuminance(c) {
-    function map(v) {
-      var x = v / 255;
-      return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
-    }
-    return 0.2126 * map(c.r) + 0.7152 * map(c.g) + 0.0722 * map(c.b);
-  }
-
-  function contrastRatio(a, b) {
-    var la = relativeLuminance(a);
-    var lb = relativeLuminance(b);
-    var lighter = Math.max(la, lb);
-    var darker = Math.min(la, lb);
-    return (lighter + 0.05) / (darker + 0.05);
-  }
-
-  function pickDynamicAccent(baseBg) {
-    var fallback = { r: 139, g: 92, b: 246, a: 1 };
-    var candidates = [];
-
-    function pushCandidate(value, weight) {
-      var parsed = parseCssColor(value);
-      if (!parsed || parsed.a === 0) return;
-      candidates.push({ color: parsed, weight: weight || 1 });
-    }
-
-    try {
-      var meta = document.querySelector('meta[name="theme-color"], meta[name="msapplication-TileColor"]');
-      if (meta && meta.content) pushCandidate(meta.content, 4);
-    } catch (e) {}
-
-    try {
-      var bodyStyle = getComputedStyle(document.body);
-      pushCandidate(bodyStyle.color, 1.6);
-      pushCandidate(bodyStyle.borderColor, 1);
-    } catch (e) {}
-
-    try {
-      var interactive = document.querySelectorAll('a, button, [role="button"], [class*="btn"], [class*="button"], [class*="cta"]');
-      var max = Math.min(interactive.length, 40);
-      for (var i = 0; i < max; i++) {
-        var st = getComputedStyle(interactive[i]);
-        pushCandidate(st.backgroundColor, 2.6);
-        pushCandidate(st.color, 1.5);
-        pushCandidate(st.borderColor, 1.1);
-      }
-    } catch (e) {}
-
-    var best = null;
-    var bestScore = -Infinity;
-
-    for (var j = 0; j < candidates.length; j++) {
-      var c = candidates[j].color;
-      var hsl = rgbToHsl(c);
-      var sat = hsl.s;
-      var lum = relativeLuminance(c);
-      if (sat < 0.18) continue;
-      if (lum <= 0.05 || lum >= 0.95) continue;
-
-      var score = sat * 70;
-      score += (1 - Math.abs(lum - 0.45)) * 20;
-      score += Math.min(contrastRatio(c, baseBg), 8) * 2;
-      score += candidates[j].weight * 8;
-
-      if (score > bestScore) {
-        bestScore = score;
-        best = c;
-      }
-    }
-
-    return best || fallback;
-  }
-
-  function buildSidebarPaletteFromPage() {
-    var defaultBg = { r: 18, g: 20, b: 30, a: 1 };
-    var pageBg = defaultBg;
-
-    try {
-      var rootStyle = getComputedStyle(document.body || document.documentElement);
-      pageBg = parseCssColor(rootStyle.backgroundColor) || defaultBg;
-    } catch (e) {}
-
-    var accent = pickDynamicAccent(pageBg);
-    var accentHsl = rgbToHsl(accent);
-    var accentStrong = hslToRgb(accentHsl.h, Math.max(0.35, accentHsl.s), Math.max(0.28, accentHsl.l * 0.74));
-    var accent2 = hslToRgb(accentHsl.h + 24, Math.max(0.36, Math.min(0.84, accentHsl.s * 0.92)), Math.max(0.45, Math.min(0.65, accentHsl.l + 0.06)));
-
-    var darkBase = relativeLuminance(pageBg) < 0.32
-      ? mixColor(pageBg, { r: 10, g: 12, b: 18, a: 1 }, 0.42)
-      : { r: 14, g: 18, b: 28, a: 1 };
-
-    var bgStart = mixColor(darkBase, accent, 0.16);
-    var bgMid = mixColor(darkBase, accent2, 0.24);
-    var bgEnd = mixColor(darkBase, accent, 0.1);
-
-    var text = { r: 229, g: 232, b: 240, a: 1 };
-    var muted = mixColor(text, bgMid, 0.45);
-    var soft = mixColor(text, bgMid, 0.62);
-
-    return {
-      accent: accent,
-      accentStrong: accentStrong,
-      accent2: accent2,
-      bgStart: bgStart,
-      bgMid: bgMid,
-      bgEnd: bgEnd,
-      text: text,
-      muted: muted,
-      soft: soft,
-    };
-  }
-
-  function applySidebarTheme(force) {
-    var now = Date.now();
-    if (!force && now - sidebarThemeState.lastAppliedAt < CONFIG.themeRefreshThrottleMs) return;
-    sidebarThemeState.lastAppliedAt = now;
-
-    var palette = buildSidebarPaletteFromPage();
-    var rootStyle = document.documentElement.style;
-
-    rootStyle.setProperty('--tryon-accent', rgbToCss(palette.accent));
-    rootStyle.setProperty('--tryon-accent-strong', rgbToCss(palette.accentStrong));
-    rootStyle.setProperty('--tryon-accent-rgb', palette.accent.r + ', ' + palette.accent.g + ', ' + palette.accent.b);
-    rootStyle.setProperty('--tryon-accent-2', rgbToCss(palette.accent2));
-    rootStyle.setProperty('--tryon-accent-2-rgb', palette.accent2.r + ', ' + palette.accent2.g + ', ' + palette.accent2.b);
-    rootStyle.setProperty('--tryon-sidebar-bg-start', rgbToCss(palette.bgStart));
-    rootStyle.setProperty('--tryon-sidebar-bg-mid', rgbToCss(palette.bgMid));
-    rootStyle.setProperty('--tryon-sidebar-bg-end', rgbToCss(palette.bgEnd));
-    rootStyle.setProperty('--tryon-text', rgbToCss(palette.text));
-    rootStyle.setProperty('--tryon-muted', rgbToCss(palette.muted));
-    rootStyle.setProperty('--tryon-soft', rgbToCss(palette.soft));
+  function applySidebarTheme(_force) {
+    /* Fixed light theme in overlay.css — matches gradfit.tech, not retailer pages. */
   }
 
   function isExcludedImage(img) {
@@ -589,9 +356,9 @@
   // For every product image we already detect, score it against the
   // cached closet style profile (palette + categories + keywords) from
   // the service worker. When the score crosses a threshold we wrap the
-  // image with a subtle animated glow border and mount a hover pill —
-  // "✨ Try this from your closet" — distinct from the Try-On CTA so
-  // the two don't fight for the same hover target.
+  // image with a brand-colored animated glow and a "Recommended for you"
+  // pill (top-left). Glow is always on; pill lifts slightly on hover.
+  // Distinct from the bottom Try-on CTA so the two don't overlap.
   //
   // Matching is keyword-only by design: alt text + image URL path +
   // immediate parent text vs the profile's keywords / categories /
@@ -715,25 +482,23 @@
       // never touch the retailer's image element.
       var glow = document.createElement('div');
       glow.className = 'tryon-ai-style-glow';
-      glow.style.cssText =
-        'position:absolute;inset:0;pointer-events:none;border-radius:12px;' +
-        'box-shadow:0 0 0 2px rgba(139,92,246,0.55), 0 0 24px 4px rgba(139,92,246,0.35);' +
-        'z-index:999996;animation:tryon-style-glow-pulse 2.4s ease-in-out infinite;';
+      glow.setAttribute('aria-hidden', 'true');
 
       var pill = document.createElement('div');
       pill.className = 'tryon-ai-style-pill';
-      pill.textContent = '✨ You should try this';
-      pill.style.cssText =
-        'position:absolute;top:8px;left:8px;z-index:999997;' +
-        'padding:4px 9px;border-radius:999px;font-size:11px;font-weight:700;' +
-        'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
-        'color:#fff;background:linear-gradient(135deg,#8b5cf6,#3b82f6);' +
-        'box-shadow:0 4px 14px rgba(139,92,246,0.35);' +
-        'opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease;' +
-        'pointer-events:none;letter-spacing:.02em;';
+      pill.setAttribute('role', 'note');
+      pill.innerHTML =
+        '<span class="tryon-ai-style-pill__spark" aria-hidden="true"></span>' +
+        '<span class="tryon-ai-style-pill__text">Recommended for you</span>';
 
-      function showPill() { pill.style.opacity = '1'; pill.style.transform = 'translateY(0)'; }
-      function hidePill() { pill.style.opacity = '0'; pill.style.transform = 'translateY(-4px)'; }
+      function showPill() {
+        pill.classList.add('tryon-ai-style-pill--emphasis');
+        glow.classList.add('tryon-ai-style-glow--emphasis');
+      }
+      function hidePill() {
+        pill.classList.remove('tryon-ai-style-pill--emphasis');
+        glow.classList.remove('tryon-ai-style-glow--emphasis');
+      }
       img.addEventListener('mouseenter', showPill);
       img.addEventListener('mouseleave', hidePill);
 
@@ -756,21 +521,6 @@
     });
     styleHighlights.clear();
   }
-
-  // Inject a small keyframes block once so the glow pulses softly.
-  (function injectStyleHighlightKeyframes() {
-    try {
-      if (document.getElementById('tryon-style-glow-keyframes')) return;
-      var s = document.createElement('style');
-      s.id = 'tryon-style-glow-keyframes';
-      s.textContent =
-        '@keyframes tryon-style-glow-pulse {' +
-        '0%,100%{box-shadow:0 0 0 2px rgba(139,92,246,0.55),0 0 24px 4px rgba(139,92,246,0.35);}' +
-        '50%{box-shadow:0 0 0 2px rgba(139,92,246,0.75),0 0 30px 6px rgba(139,92,246,0.55);}' +
-        '}';
-      (document.head || document.documentElement).appendChild(s);
-    } catch (_e) {}
-  })();
 
   // Listen for toggle changes from the popup so users can flip the
   // feature on/off without reloading the page.
@@ -798,6 +548,64 @@
   // ═══════════════════════════════════════════════════════════
   // BUTTON CREATION
   // ═══════════════════════════════════════════════════════════
+  function getExtensionAssetUrl(relativePath) {
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+      return chrome.runtime.getURL(relativePath);
+    }
+    return relativePath;
+  }
+
+  function buildGradfitCtaMarkup() {
+    var iconUrl = getExtensionAssetUrl('assets/icon-48.png');
+    return (
+      '<span class="tryon-ai-cta__badge" aria-hidden="true">' +
+        '<img class="tryon-ai-cta__badge-img" src="' + iconUrl + '" alt="" width="14" height="14" />' +
+      '</span>' +
+      '<span class="tryon-ai-cta__label">Try on</span>'
+    );
+  }
+
+  function createGradfitCtaButton(onClick) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tryon-ai-cta';
+    btn.setAttribute('aria-label', 'Try on with GradFiT');
+    btn.innerHTML = buildGradfitCtaMarkup();
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  function mountOverlayOnElement(targetEl, onCtaClick) {
+    var overlay = document.createElement('div');
+    overlay.className = 'tryon-ai-overlay';
+    overlay.style.cssText =
+      'position:absolute;bottom:10px;left:50%;transform:translateX(-50%) translateY(6px);' +
+      'z-index:999998;pointer-events:all;opacity:0;transition:opacity .25s ease,transform .25s ease;';
+
+    var btn = createGradfitCtaButton(onCtaClick);
+    overlay.appendChild(btn);
+
+    var ht = null;
+    function show() {
+      clearTimeout(ht);
+      overlay.style.opacity = '1';
+      overlay.style.transform = 'translateX(-50%) translateY(0)';
+    }
+    function hide() {
+      clearTimeout(ht);
+      ht = setTimeout(function() {
+        overlay.style.opacity = '0';
+        overlay.style.transform = 'translateX(-50%) translateY(6px)';
+      }, 150);
+    }
+    targetEl.addEventListener('mouseenter', show);
+    targetEl.addEventListener('mouseleave', hide);
+    overlay.addEventListener('mouseenter', show);
+    overlay.addEventListener('mouseleave', hide);
+
+    return { overlay: overlay, show: show, hide: hide };
+  }
+
   function ensurePositionedParent(img) {
     var el = img.parentElement;
     for (var i = 0; i < 3 && el; i++) { if (getComputedStyle(el).position !== 'static') return el; el = el.parentElement; }
@@ -812,42 +620,13 @@
     try {
       var wrapper = ensurePositionedParent(img);
       if (!wrapper) return;
-      var overlay = document.createElement('div');
-      overlay.className = 'tryon-ai-overlay';
-      overlay.style.cssText = 'position:absolute;bottom:12px;left:50%;transform:translateX(-50%) translateY(8px);z-index:999998;pointer-events:all;opacity:0;transition:opacity .25s ease,transform .25s ease;';
-
-      var btn = document.createElement('button');
-      btn.className = 'tryon-ai-button';
-      btn.innerHTML = '<span class="tryon-ai-btn-icon">\u2728</span> Try On';
-      btn.style.cssText = 'background:linear-gradient(135deg,#8b5cf6,#3b82f6);color:#fff;border:none;padding:10px 22px;border-radius:24px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 20px rgba(139,92,246,.45);transition:all .25s ease;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;gap:6px;';
-
-      var qBtn = document.createElement('button');
-      qBtn.className = 'tryon-ai-quick-btn';
-      qBtn.innerHTML = '\u26A1';
-      qBtn.title = 'Quick Preview in Sidebar';
-      qBtn.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border:2px solid rgba(255,255,255,.3);padding:8px 10px;border-radius:50%;font-size:14px;cursor:pointer;transition:all .25s ease;backdrop-filter:blur(4px);';
-
-      btn.onmouseenter = function() { btn.style.transform = 'scale(1.06)'; btn.style.boxShadow = '0 6px 28px rgba(139,92,246,.55)'; };
-      btn.onmouseleave = function() { btn.style.transform = 'scale(1)'; btn.style.boxShadow = '0 4px 20px rgba(139,92,246,.45)'; };
-      qBtn.onmouseenter = function() { qBtn.style.background = 'rgba(139,92,246,.6)'; qBtn.style.borderColor = '#8b5cf6'; };
-      qBtn.onmouseleave = function() { qBtn.style.background = 'rgba(255,255,255,.15)'; qBtn.style.borderColor = 'rgba(255,255,255,.3)'; };
-
-      btn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); handleTryOnClick(img, btn); });
-      qBtn.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); handleQuickPreview(img); });
-
-      var bc = document.createElement('div');
-      bc.style.cssText = 'display:flex;align-items:center;gap:6px;';
-      bc.appendChild(btn); bc.appendChild(qBtn);
-      overlay.appendChild(bc);
-
-      var ht = null;
-      function show() { clearTimeout(ht); overlay.style.opacity = '1'; overlay.style.transform = 'translateX(-50%) translateY(0)'; }
-      function hide() { clearTimeout(ht); ht = setTimeout(function() { overlay.style.opacity = '0'; overlay.style.transform = 'translateX(-50%) translateY(8px)'; }, 150); }
-      img.addEventListener('mouseenter', show); img.addEventListener('mouseleave', hide);
-      overlay.addEventListener('mouseenter', show); overlay.addEventListener('mouseleave', hide);
-
-      wrapper.appendChild(overlay);
-      imageOverlays.set(img, { overlay: overlay, wrapper: wrapper });
+      var mounted = mountOverlayOnElement(img, function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleQuickPreview(img);
+      });
+      wrapper.appendChild(mounted.overlay);
+      imageOverlays.set(img, { overlay: mounted.overlay, wrapper: wrapper });
 
       // Closet-aware highlight runs alongside the Try-On CTA. It bails
       // out cleanly when the profile isn't loaded yet (the loader on
@@ -860,26 +639,6 @@
   // ═══════════════════════════════════════════════════════════
   // CLICK HANDLERS
   // ═══════════════════════════════════════════════════════════
-  function handleTryOnClick(img, button) {
-    try {
-      button.disabled = true; button.style.opacity = '0.7'; button.textContent = 'Opening...';
-      var md = extractProductMetadata(img);
-      if (!md.imageUrl) { showToast('Could not get image URL', 'error'); resetButton(button); return; }
-      if (isDuplicateImage(md.imageUrl)) {
-        showToast('Already processing this item...', 'info');
-        resetButton(button);
-        return;
-      }
-      duplicateCheckMap.set(normalizeImageUrl(md.imageUrl), Date.now());
-      playImageAnimation(img);
-      setTimeout(function() {
-        try { chrome.runtime.sendMessage({ action: 'tryOnProduct', metadata: md, timestamp: Date.now() }); } catch (e) { console.error('[GradFiT] msg error:', e); }
-        showToast('Opening GradFiT...', 'success');
-        setTimeout(function() { resetButton(button); }, 1500);
-      }, CONFIG.clickAnimationDuration);
-    } catch (err) { console.error('[GradFiT] click error:', err); showToast('Error: ' + err.message, 'error'); resetButton(button); }
-  }
-
   function handleQuickPreview(img) {
     var md = extractProductMetadata(img);
     if (!md.imageUrl) { showToast('Could not get image URL', 'error'); return; }
@@ -999,11 +758,6 @@
     });
   }
 
-  function resetButton(button) {
-    button.disabled = false; button.style.opacity = '1';
-    button.innerHTML = '<span class="tryon-ai-btn-icon">\u2728</span> Try On';
-  }
-
   // ═══════════════════════════════════════════════════════════
   // SCAN ANIMATION
   // ═══════════════════════════════════════════════════════════
@@ -1034,10 +788,13 @@
   // ═══════════════════════════════════════════════════════════
   function showToast(message, type) {
     var ex = document.getElementById('tryon-ai-toast'); if (ex) ex.remove();
-    var colors = { error: '#ef4444', success: '#10b981', info: '#8b5cf6' };
+    var accent = { error: '#ef4444', success: '#10b981', info: '#4f7cff' };
     var t = document.createElement('div');
     t.id = 'tryon-ai-toast';
-    t.style.cssText = 'position:fixed;top:20px;right:20px;background:' + (colors[type] || colors.info) + ';color:#fff;padding:12px 20px;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.3);z-index:999999;font-size:14px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;animation:tryon-toast-in .3s ease-out;max-width:300px;';
+    t.style.cssText =
+      'position:fixed;top:20px;right:20px;padding:11px 16px;border-radius:10px;' +
+      'z-index:999999;animation:tryon-toast-in .3s ease-out;max-width:300px;' +
+      'border-left:3px solid ' + (accent[type] || accent.info) + ';';
     t.textContent = message;
     document.body.appendChild(t);
     setTimeout(function() { t.style.transition = 'opacity .3s,transform .3s'; t.style.opacity = '0'; t.style.transform = 'translateX(40px)'; setTimeout(function() { t.remove(); }, 300); }, 3000);
@@ -1047,7 +804,6 @@
   // SIDEBAR
   // ═══════════════════════════════════════════════════════════
   var sidebarEl = null;
-  var sidebarToggleEl = null;
   var sidebarBackdropEl = null;
   var sidebarState = { open: false, selectedGarments: [], history: [] };
 
@@ -1089,15 +845,7 @@
     sidebarBackdropEl.addEventListener('click', closeSidebar);
     document.body.appendChild(sidebarBackdropEl);
 
-    // Toggle button
-    sidebarToggleEl = document.createElement('div');
-    sidebarToggleEl.id = 'tryon-ai-sidebar-toggle';
-    sidebarToggleEl.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
-    sidebarToggleEl.title = 'GradFiT Quick Try-On';
-    sidebarToggleEl.addEventListener('click', toggleSidebar);
-    document.body.appendChild(sidebarToggleEl);
-
-    // Sidebar panel
+    // Sidebar panel (opened from product-image CTA or extension popup)
     sidebarEl = document.createElement('div');
     sidebarEl.id = 'tryon-ai-sidebar';
     sidebarEl.innerHTML = buildSidebarHTML();
@@ -1114,9 +862,8 @@
       : 'assets/icon-48.png';
     return '<div class="tryon-sidebar-header">' +
       '<div class="tryon-sidebar-logo">' +
-        '<img src="' + logoSrc + '" alt="GradFiT" width="22" height="22" style="border-radius:6px;display:block;" />' +
+        '<img src="' + logoSrc + '" alt="GradFiT" width="22" height="22" />' +
         '<span class="tryon-sidebar-title">GradFiT</span>' +
-        '<span class="tryon-sidebar-badge">Quick</span>' +
       '</div>' +
       '<button class="tryon-sidebar-close" id="tryon-sidebar-close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>' +
     '</div>' +
@@ -1124,7 +871,7 @@
       '<div class="tryon-sidebar-section tryon-model-section">' +
         '<div class="tryon-section-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Preview</span></div>' +
         '<div class="tryon-model-preview" id="tryon-model-preview">' +
-          '<div class="tryon-model-placeholder" id="tryon-model-placeholder"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(139,92,246,0.4)" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Select a garment to preview</span></div>' +
+          '<div class="tryon-model-placeholder" id="tryon-model-placeholder"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(79,124,255,0.45)" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>Select a garment to preview</span></div>' +
           '<img id="tryon-model-img" class="tryon-model-img" style="display:none;" alt="Try-on preview"/>' +
           '<div class="tryon-model-loading" id="tryon-model-loading" style="display:none;"><div class="tryon-spinner"></div><span>Generating preview...</span></div>' +
         '</div>' +
@@ -1135,7 +882,7 @@
         // Buy-this affiliate CTA, appears after a completed try-on.
         // Hidden until we have a try-on id + garment id to attribute the
         // click to. Styled as an outline button below the two main CTAs.
-        '<div class="tryon-buy-wrap" id="tryon-buy-wrap" style="display:none;margin-top:10px">' +
+        '<div class="tryon-buy-wrap" id="tryon-buy-wrap" style="display:none">' +
           '<a class="tryon-action-btn tryon-action-buy" id="tryon-buy-link" href="#" target="_blank" rel="noopener noreferrer">' +
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>' +
             '<span id="tryon-buy-label">Buy this</span>' +
@@ -1164,7 +911,7 @@
       '</div>' +
       '<div class="tryon-sidebar-section">' +
         '<div class="tryon-section-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><span>Selected Items</span><span class="tryon-item-count" id="tryon-item-count">0</span></div>' +
-        '<div class="tryon-garment-list" id="tryon-garment-list"><div class="tryon-empty-state" id="tryon-empty-garments"><span>Click \u26A1 on any garment to add it here</span></div></div>' +
+        '<div class="tryon-garment-list" id="tryon-garment-list"><div class="tryon-empty-state" id="tryon-empty-garments"><span>Try on from any product image to add items here</span></div></div>' +
       '</div>' +
       '<div class="tryon-sidebar-section">' +
         '<div class="tryon-section-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Recent</span></div>' +
@@ -1174,7 +921,7 @@
     '<div class="tryon-sidebar-footer">' +
       '<a class="tryon-footer-link" id="tryon-open-app-link">Open GradFiT</a>' +
       '<span class="tryon-footer-divider">\u00B7</span>' +
-      '<span class="tryon-footer-powered">Powered by AI</span>' +
+      '<span class="tryon-footer-powered">Virtual try-on</span>' +
     '</div>';
   }
 
@@ -1237,7 +984,6 @@
       applySidebarTheme(true);
       sidebarState.open = true;
       sidebarEl.classList.add('open');
-      sidebarToggleEl.classList.add('active');
       sidebarBackdropEl.classList.add('visible');
     }
   }
@@ -1247,7 +993,6 @@
     applySidebarTheme(true);
     sidebarState.open = true;
     sidebarEl.classList.add('open');
-    sidebarToggleEl.classList.add('active');
     sidebarBackdropEl.classList.add('visible');
     if (metadata) addGarmentToSidebar(metadata);
   }
@@ -1255,7 +1000,6 @@
   function closeSidebar() {
     sidebarState.open = false;
     if (sidebarEl) sidebarEl.classList.remove('open');
-    if (sidebarToggleEl) sidebarToggleEl.classList.remove('active');
     if (sidebarBackdropEl) sidebarBackdropEl.classList.remove('visible');
   }
 
@@ -1773,26 +1517,14 @@
     if (imageOverlays.has(div)) return;
     var pos = getComputedStyle(div).position;
     if (pos === 'static') div.style.position = 'relative';
-    var overlay = document.createElement('div');
-    overlay.className = 'tryon-ai-overlay';
-    overlay.style.cssText = 'position:absolute;bottom:12px;left:50%;transform:translateX(-50%) translateY(8px);z-index:999998;pointer-events:all;opacity:0;transition:opacity .25s ease,transform .25s ease;';
-    var button = document.createElement('button');
-    button.className = 'tryon-ai-button';
-    button.innerHTML = '<span class="tryon-ai-btn-icon">\u2728</span> Try On';
-    button.style.cssText = 'background:linear-gradient(135deg,#8b5cf6,#3b82f6);color:#fff;border:none;padding:10px 22px;border-radius:24px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 20px rgba(139,92,246,.45);transition:all .25s ease;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;gap:6px;';
-    button.addEventListener('click', function(e) {
-      e.preventDefault(); e.stopPropagation();
-      var md = { imageUrl: bgUrl, title: '', price: '', brand: '', url: window.location.href };
-      safeSendMessage({ action: 'tryOnProduct', metadata: md, timestamp: Date.now() });
-      showToast('Opening GradFiT...', 'success');
+    var md = { imageUrl: bgUrl, title: '', price: '', brand: '', url: window.location.href };
+    var mounted = mountOverlayOnElement(div, function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openSidebar(md);
+      runQuickTryOn(md);
     });
-    overlay.appendChild(button);
-    var ht = null;
-    div.addEventListener('mouseenter', function() { clearTimeout(ht); overlay.style.opacity = '1'; overlay.style.transform = 'translateX(-50%) translateY(0)'; });
-    div.addEventListener('mouseleave', function() { clearTimeout(ht); ht = setTimeout(function() { overlay.style.opacity = '0'; overlay.style.transform = 'translateX(-50%) translateY(8px)'; }, 150); });
-    overlay.addEventListener('mouseenter', function() { clearTimeout(ht); });
-    overlay.addEventListener('mouseleave', function() { ht = setTimeout(function() { overlay.style.opacity = '0'; overlay.style.transform = 'translateX(-50%) translateY(8px)'; }, 150); });
-    div.appendChild(overlay);
+    div.appendChild(mounted.overlay);
     imageOverlays.set(div, { overlay: overlay, wrapper: div });
   }
 
@@ -2003,10 +1735,9 @@
     processImages();
     setupMutationObserver();
     setupIntersectionObserver();
-    // Sidebar + its toggle are now created lazily - only when the user
-    // actually clicks the quick-preview button on a product image or the
-    // popup sends a toggleSidebar message. This keeps normal browsing
-    // free of always-visible GradFiT chrome.
+    // Sidebar is created lazily when the user clicks "Try on" on a
+    // product image or the popup sends a toggleSidebar message — no
+    // fixed floating launcher on the page.
     window.addEventListener('focus', function() { applySidebarTheme(false); });
     document.addEventListener('visibilitychange', function() {
       if (document.visibilityState === 'visible') applySidebarTheme(false);

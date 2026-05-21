@@ -24,7 +24,7 @@
         "content/content.js",
         "content/gradfit-floating.js"
       ],
-      "css": ["content/overlay.css"],
+      "css": ["shared/brand.css", "content/overlay.css"],
       "run_at": "document_idle"
     }
   ],

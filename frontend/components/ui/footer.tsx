@@ -38,17 +38,15 @@ export function Footer() {
             <div>
               <h4 className="font-display font-bold tracking-tight mb-4 text-foreground">Resources</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Documentation</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Help Center</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Contact</a></li>
+                <li><a href="/extension" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Browser extension</a></li>
+                <li><a href="/support" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Support</a></li>
               </ul>
             </div>
             <div>
               <h4 className="font-display font-bold tracking-tight mb-4 text-foreground">Legal</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Privacy</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Terms</a></li>
-                <li><a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Cookie Policy</a></li>
+                <li><a href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Privacy</a></li>
+                <li><a href="/extension/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Extension privacy</a></li>
               </ul>
             </div>
           </div>
