@@ -1,15 +1,5 @@
 # GradFiiT.ai
-A Virtual Try-anything-on company that let user try hairstyle, outfits and shoes.
+A Fashion Intelligence company that let user try-anything virtually from anywhere, manage a virtual closet, recommends outfits that matches their choice and a brilliant outfit completion-recommendation model. All of this free of cost.
+Link : https://www.gradfit.tech
+extension : coming soon....
 
-## Local Development
-
-Run backend and frontend together from the workspace root:
-
-```bash
-npm run dev
-```
-
-This starts:
-
-- backend on `http://localhost:8000`
-- frontend on `http://localhost:3000`
