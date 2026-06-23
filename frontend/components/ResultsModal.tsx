@@ -23,7 +23,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { toast } from "sonner"
-import { tryonApi } from "@/lib/api"
+import { API_BASE_URL, tryonApi } from "@/lib/api"
 
 // Use Bookmark as fallback for Pinterest if not available
 const Pinterest = Bookmark
@@ -366,6 +366,61 @@ export function ResultsModal({
               exit={{ opacity: 0, y: 20 }}
               className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-6 space-y-4"
             >
+              {/* Guest sign-in upsell. The user just saw a real result
+                  with zero friction; this is the moment they're most
+                  likely to convert. One tap with OAuth — no forms. */}
+              {!isAuthenticated && (
+                <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/5 via-purple-500/5 to-pink-500/5 p-4 sm:p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-sm text-foreground">
+                        Love your look? Save it forever.
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Sign in to keep this in your closet, unlock unlimited tries, and 3D mode.
+                      </p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          window.location.href = `${API_BASE_URL}/api/auth/oauth/google/authorize`
+                        }}
+                      >
+                        Google
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          window.location.href = `${API_BASE_URL}/api/auth/oauth/github/authorize`
+                        }}
+                      >
+                        GitHub
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          window.location.href = `${API_BASE_URL}/api/auth/oauth/facebook/authorize`
+                        }}
+                      >
+                        Facebook
+                      </Button>
+                      {onLogin && (
+                        <Button type="button" size="sm" onClick={onLogin}>
+                          Email
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons Row */}
               <div className="flex flex-wrap items-center gap-3">
                 {/* Download Button with Format Dropdown */}

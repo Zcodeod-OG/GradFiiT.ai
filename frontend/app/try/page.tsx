@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
-import { uploadApi, garmentsApi, tryonApi, userApi } from "@/lib/api"
+import { API_BASE_URL, uploadApi, garmentsApi, tryonApi, userApi } from "@/lib/api"
 import { getApiErrorMessage } from "@/lib/api-error"
 import { useAuth } from "@/lib/auth"
 import { TIER_LABELS, TIER_TO_ALLOWED_MODES, type SubscriptionTier, type TryOnMode } from "@/lib/plans"
@@ -231,24 +231,21 @@ function TryOnPageInner() {
   const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState(0)
   const [isSavingMode, setIsSavingMode] = useState(false)
   const [quotaSnapshot, setQuotaSnapshot] = useState<QuotaSnapshot | null>(null)
+  // Anonymous users see remaining free guest tries here; null when authed
+  // or before the first preview call.
+  const [anonQuota, setAnonQuota] = useState<
+    { used: number; limit: number; remaining: number } | null
+  >(null)
   const estimatedTimeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Auth
-  const { isAuthenticated, user, login, register, logout, loadUser } = useAuth()
+  const { isAuthenticated, user, login, register, logout } = useAuth()
   const [photoWizardOpen, setPhotoWizardOpen] = useState(false)
   const [showLoginForm, setShowLoginForm] = useState(false)
   const [loginEmail, setLoginEmail] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
-  const [loginFullName, setLoginFullName] = useState("")
   const [isRegisterMode, setIsRegisterMode] = useState(false)
   const [loginLoading, setLoginLoading] = useState(false)
-  const [registerTier, setRegisterTier] = useState<SubscriptionTier>("free_2d")
-  const [registerPreferredMode, setRegisterPreferredMode] = useState<TryOnMode>("2d")
-  const [registerAvatarFile, setRegisterAvatarFile] = useState<File | null>(null)
-  const [registerAvatarHeightCm, setRegisterAvatarHeightCm] = useState("")
-  const [registerAvatarBodyType, setRegisterAvatarBodyType] = useState("")
-  const [registerAvatarGender, setRegisterAvatarGender] = useState("")
-  const [registerAvatarNotes, setRegisterAvatarNotes] = useState("")
 
   // Chrome extension query params
   const searchParams = useSearchParams()
@@ -264,8 +261,6 @@ function TryOnPageInner() {
   // request omits `person_image_url`.
   const usingSavedPhoto =
     isAuthenticated && tryonMode === "2d" && !!savedPersonPhotoUrl && !personImage
-  const registerAllowedModes = TIER_TO_ALLOWED_MODES[registerTier] || ["2d"]
-  const registerHas3d = registerAllowedModes.includes("3d")
   const sessionXp =
     (personImage ? 20 : 0) +
     (garmentImage ? 20 : 0) +
@@ -407,40 +402,23 @@ function TryOnPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isProcessing, garmentImage, personImage, savedPersonPhotoUrl])
 
-  // Handle login/register
+  // Handle login/register.
+  //
+  // Lowest-friction email auth: just email + password. Tier and preferred
+  // mode default to the free_2d / 2d combo; users can change either from
+  // /account once they're in. 3D avatar setup also moved out of the
+  // signup flow -- it lives in PhotoWizard now.
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginLoading(true)
     try {
       if (isRegisterMode) {
-        if (registerPreferredMode === "3d" && !registerAvatarFile) {
-          toast.error("Please upload a person image for 3D avatar setup")
-          setLoginLoading(false)
-          return
-        }
-
         await register({
           email: loginEmail,
           password: loginPassword,
-          fullName: loginFullName || undefined,
-          subscriptionTier: registerTier,
-          preferredMode: registerPreferredMode,
+          subscriptionTier: "free_2d",
+          preferredMode: "2d",
         })
-
-        if (registerPreferredMode === "3d" && registerAvatarFile) {
-          const uploaded = await uploadApi.uploadImage(registerAvatarFile)
-          await userApi.buildAvatar({
-            person_image_url: uploaded.data.url,
-            quality: "best",
-            height_cm: registerAvatarHeightCm ? Number(registerAvatarHeightCm) : undefined,
-            body_type: registerAvatarBodyType || undefined,
-            gender: registerAvatarGender || undefined,
-            notes: registerAvatarNotes || undefined,
-          })
-          await loadUser()
-          toast.success("3D avatar created")
-        }
-
         toast.success("Account created! Welcome!")
       } else {
         await login(loginEmail, loginPassword)
@@ -455,9 +433,15 @@ function TryOnPageInner() {
   }
 
   const handleModeSelection = async (mode: TryOnMode) => {
+    // Anonymous users can freely toggle 2D (the guest preview path).
+    // 3D needs a saved avatar so we gently nudge sign-in only for that.
     if (!isAuthenticated) {
-      setShowLoginForm(true)
-      toast.info("Log in to choose 2D or 3D mode")
+      if (mode === "3d") {
+        setShowLoginForm(true)
+        toast.info("Sign in (free) to unlock 3D try-on")
+        return
+      }
+      setTryonMode(mode)
       return
     }
 
@@ -647,6 +631,88 @@ function TryOnPageInner() {
     }
   }
 
+  // Anonymous (guest) preview flow.
+  //
+  // The whole point: a first-time visitor can hit /try, drop two images,
+  // tap Generate, and SEE a result without ever creating an account. We
+  // upload both images through the public-upload endpoint (rate-limited
+  // per IP, files auto-expire in 24h) then call the single-stage
+  // /api/tryon/preview path. Results land in the same ResultsModal as
+  // the authed flow, which now upsells "save this look — sign in".
+  const runAnonymousPreview = async () => {
+    if (!personImage || !garmentImage) return
+
+    setIsProcessing(true)
+    setProcessingProgress(5)
+    setCurrentStep(0)
+    setError(null)
+    setEstimatedTimeRemaining(10)
+    if (estimatedTimeIntervalRef.current) clearInterval(estimatedTimeIntervalRef.current)
+    estimatedTimeIntervalRef.current = setInterval(() => {
+      setEstimatedTimeRemaining((prev) => Math.max(0, prev - 1))
+    }, 1000)
+
+    setStatusMessage("Uploading images...")
+    try {
+      // Parallel public uploads — both files go to public-uploads/ on S3
+      // with a 24h lifecycle expiry. Slow Render cold-start retries are
+      // handled by the shared axios interceptor.
+      const [personUpload, garmentUpload] = await Promise.all([
+        uploadApi.uploadPublicImage(personImage.file),
+        uploadApi.uploadPublicImage(garmentImage.file),
+      ])
+      setCurrentStep(1)
+      setProcessingProgress(25)
+      setStatusMessage("Generating your try-on...")
+
+      const previewResponse = await tryonApi.preview({
+        person_image_url: personUpload.data.url,
+        garment_image_url: garmentUpload.data.url,
+        garment_description: garmentImage.file.name || "a garment",
+        quality: "fast",
+        mode: "2d",
+      })
+      const payload = previewResponse.data.data
+      if (payload.anon_quota) {
+        setAnonQuota(payload.anon_quota)
+      }
+
+      setCurrentStep(2)
+      setProcessingProgress(100)
+      setStatusMessage("Done")
+      setResultImage(payload.result_image_url)
+      setResultModelUrl(null)
+      setResultTurntableUrl(null)
+      setResultGarmentId(null)
+      setResultTryonId(null)
+      setShowResult(true)
+      setIsProcessing(false)
+      setEstimatedTimeRemaining(0)
+      if (estimatedTimeIntervalRef.current) {
+        clearInterval(estimatedTimeIntervalRef.current)
+        estimatedTimeIntervalRef.current = null
+      }
+      toast.success("Try-on ready!")
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err, "Try-on failed. Please try again.")
+      setError(message)
+      setIsProcessing(false)
+      setEstimatedTimeRemaining(0)
+      if (estimatedTimeIntervalRef.current) {
+        clearInterval(estimatedTimeIntervalRef.current)
+        estimatedTimeIntervalRef.current = null
+      }
+      // 429 = anon quota exhausted; nudge sign-in.
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 429) {
+        toast.error(message)
+        setTimeout(() => setShowLoginForm(true), 600)
+      } else {
+        toast.error(message)
+      }
+    }
+  }
+
   // Generate try-on
   const handleGenerate = async () => {
     const canReuseAvatar = tryonMode === "3d" && user?.avatar_status === "ready"
@@ -665,9 +731,21 @@ function TryOnPageInner() {
       return
     }
 
+    // ── Anonymous (guest) flow ───────────────────────────────────────────
+    // No auth = no login wall. We public-upload both images and hit the
+    // single-stage /api/tryon/preview endpoint. Per-IP daily quota is
+    // enforced server-side; we surface remaining count via `anonQuota`.
     if (!isAuthenticated) {
-      setShowLoginForm(true)
-      toast.error("Please log in to generate try-ons")
+      if (tryonMode === "3d") {
+        toast.info("Sign in (free) to unlock 3D try-on")
+        setShowLoginForm(true)
+        return
+      }
+      if (!personImage) {
+        toast.error("Please upload a photo of yourself")
+        return
+      }
+      await runAnonymousPreview()
       return
     }
 
@@ -898,10 +976,22 @@ function TryOnPageInner() {
               </Button>
             </div>
           ) : (
-            <Button size="sm" onClick={() => setShowLoginForm(true)}>
-              <LogIn className="size-4 mr-2" />
-              Log In to Generate
-            </Button>
+            <div className="flex items-center gap-2">
+              {anonQuota ? (
+                <span className="rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs text-amber-800">
+                  {anonQuota.remaining} free {anonQuota.remaining === 1 ? "try" : "tries"} left today
+                </span>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLoginForm(true)}
+                className="text-muted-foreground"
+              >
+                <LogIn className="size-4 mr-2" />
+                Sign in to save
+              </Button>
+            </div>
           )}
         </div>
 
@@ -1612,125 +1702,60 @@ function TryOnPageInner() {
       <Dialog open={showLoginForm} onOpenChange={setShowLoginForm}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{isRegisterMode ? "Create Account" : "Log In"}</DialogTitle>
+            <DialogTitle>
+              {isRegisterMode ? "Save your look — create a free account" : "Welcome back"}
+            </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleAuth} className="space-y-4">
-            {isRegisterMode && (
-              <>
-                <div>
-                  <Label htmlFor="fullName">Full Name</Label>
-                  <input
-                    id="fullName"
-                    type="text"
-                    value={loginFullName}
-                    onChange={(e) => setLoginFullName(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                    placeholder="John Doe"
-                  />
-                </div>
 
-                <div>
-                  <Label htmlFor="signupTier">Plan Tier</Label>
-                  <select
-                    id="signupTier"
-                    value={registerTier}
-                    onChange={(e) => {
-                      const tier = e.target.value as SubscriptionTier
-                      setRegisterTier(tier)
-                      const nextModes = TIER_TO_ALLOWED_MODES[tier] || ["2d"]
-                      if (!nextModes.includes(registerPreferredMode)) {
-                        setRegisterPreferredMode(nextModes[0])
-                      }
-                    }}
-                    className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                  >
-                    {(Object.keys(TIER_LABELS) as SubscriptionTier[]).map((tier) => (
-                      <option key={tier} value={tier}>
-                        {TIER_LABELS[tier]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+          {/* One-tap social sign-in — the fastest path. */}
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-center"
+                onClick={() => {
+                  window.location.href = `${API_BASE_URL}/api/auth/oauth/google/authorize`
+                }}
+              >
+                Continue with Google
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-center"
+                onClick={() => {
+                  window.location.href = `${API_BASE_URL}/api/auth/oauth/github/authorize`
+                }}
+              >
+                Continue with GitHub
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-center"
+                onClick={() => {
+                  window.location.href = `${API_BASE_URL}/api/auth/oauth/facebook/authorize`
+                }}
+              >
+                Continue with Facebook
+              </Button>
+            </div>
+            <div className="relative pt-2">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border/60" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-background px-2 text-muted-foreground">or</span>
+              </div>
+            </div>
+          </div>
 
-                <div>
-                  <Label htmlFor="signupMode">Preferred Try-On Mode</Label>
-                  <select
-                    id="signupMode"
-                    value={registerPreferredMode}
-                    onChange={(e) => setRegisterPreferredMode(e.target.value as TryOnMode)}
-                    className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                  >
-                    {registerAllowedModes.map((mode) => (
-                      <option key={mode} value={mode}>
-                        {mode.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {registerHas3d && registerPreferredMode === "3d" ? (
-                  <div className="space-y-2 rounded-md border border-border p-3">
-                    <p className="text-sm font-medium">3D Avatar Setup</p>
-                    <div>
-                      <Label htmlFor="signupAvatarImage">Person Image</Label>
-                      <input
-                        id="signupAvatarImage"
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        onChange={(e) => setRegisterAvatarFile(e.target.files?.[0] ?? null)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="signupAvatarHeight">Height (cm)</Label>
-                      <input
-                        id="signupAvatarHeight"
-                        type="number"
-                        min="100"
-                        max="250"
-                        value={registerAvatarHeightCm}
-                        onChange={(e) => setRegisterAvatarHeightCm(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                        placeholder="170"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="signupAvatarBodyType">Body Type</Label>
-                      <input
-                        id="signupAvatarBodyType"
-                        type="text"
-                        value={registerAvatarBodyType}
-                        onChange={(e) => setRegisterAvatarBodyType(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                        placeholder="athletic / slim / regular"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="signupAvatarGender">Gender</Label>
-                      <input
-                        id="signupAvatarGender"
-                        type="text"
-                        value={registerAvatarGender}
-                        onChange={(e) => setRegisterAvatarGender(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                        placeholder="woman / man / non-binary"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="signupAvatarNotes">Fit Notes</Label>
-                      <input
-                        id="signupAvatarNotes"
-                        type="text"
-                        value={registerAvatarNotes}
-                        onChange={(e) => setRegisterAvatarNotes(e.target.value)}
-                        className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
-                        placeholder="broad shoulders, longer torso, etc."
-                      />
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            )}
+          <form onSubmit={handleAuth} className="space-y-3">
+            {/* Email + password is the only minimum-viable signup form.
+                Tier / preferred mode / 3D avatar setup are all collected
+                AFTER signup via /account and the PhotoWizard, so the
+                friction here is exactly two fields. */}
             <div>
               <Label htmlFor="email">Email</Label>
               <input

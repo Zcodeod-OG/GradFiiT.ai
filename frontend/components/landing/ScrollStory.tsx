@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react"
 import {
   motion,
-  useMotionValueEvent,
   useReducedMotion,
   useScroll,
   useTransform,
@@ -14,10 +13,11 @@ import { Camera, ImageDown, ShieldCheck, Sparkles } from "lucide-react"
 /**
  * Cinematic scrollytelling.
  *
- * Pins a full-bleed cinema stage. The clip at
- * /public/landing/scrollytelling.mp4 is scroll-scrubbed: `video.currentTime`
- * tracks scroll progress, with seeks coalesced to one per animation frame
- * so fast trackpad scrolls stay smooth. Narrative cards fade with each act.
+ * Pins a full-bleed cinema stage. The clip at /public/landing/rampwalk.mp4
+ * autoplays on loop (muted, inline) — we no longer scrub `currentTime`
+ * with scroll because each seek triggers a slow keyframe lookup that made
+ * trackpad scrolling judder. Scroll now only drives the narrative card
+ * fades and progress dots (cheap opacity/transform changes).
  *
  * If the video fails to load, an SVG runway silhouette is shown instead.
  *
@@ -96,7 +96,11 @@ function useSceneOpacity(
   )
 }
 
-const SCROLL_STORY_VIDEO_SRC = "/landing/scrollytelling.mp4"
+// Pre-encoded ~1.5MB runway clip already in /public/landing. Lighter and
+// faster to start than the original 2.7MB scrollytelling.mp4, and since
+// we no longer scroll-scrub it the choice no longer matters for seek
+// performance — only first-frame paint.
+const SCROLL_STORY_VIDEO_SRC = "/landing/rampwalk.mp4"
 
 export function ScrollStory() {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -242,7 +246,8 @@ function CinemaStage({
 }
 
 function CinemaVideo({
-  progress,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  progress: _progress,
   reduce,
   onFail,
 }: {
@@ -252,71 +257,39 @@ function CinemaVideo({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [ready, setReady] = useState(false)
-  const targetTimeRef = useRef(0)
-  const rafIdRef = useRef<number | null>(null)
 
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
 
-    const onMeta = () => {
-      setReady(true)
-      try {
-        v.currentTime = 0.01
-      } catch {
-        /* ignore */
-      }
-    }
     const onLoadedData = () => setReady(true)
     const onErr = () => onFail()
 
-    v.addEventListener("loadedmetadata", onMeta)
     v.addEventListener("loadeddata", onLoadedData)
     v.addEventListener("error", onErr)
 
-    try {
-      v.load()
-    } catch {
-      /* ignore */
+    // Kick off playback. Some browsers (older Safari, autoplay-restricted
+    // contexts) reject the promise — that's fine; the video stays paused
+    // on its poster frame and we don't crash.
+    if (!reduce) {
+      v.play().catch(() => {
+        /* autoplay blocked; first user interaction will resume it */
+      })
     }
 
     return () => {
-      v.removeEventListener("loadedmetadata", onMeta)
       v.removeEventListener("loadeddata", onLoadedData)
       v.removeEventListener("error", onErr)
-      if (rafIdRef.current != null) {
-        cancelAnimationFrame(rafIdRef.current)
-        rafIdRef.current = null
-      }
     }
-  }, [onFail])
-
-  useMotionValueEvent(progress, "change", (v) => {
-    const vid = videoRef.current
-    if (!vid || !ready || reduce) return
-    const duration = vid.duration
-    if (!duration || !isFinite(duration)) return
-    targetTimeRef.current = Math.max(0, Math.min(v * duration, duration - 0.04))
-    if (rafIdRef.current == null) {
-      rafIdRef.current = requestAnimationFrame(() => {
-        rafIdRef.current = null
-        const target = targetTimeRef.current
-        if (Math.abs(vid.currentTime - target) > 0.02) {
-          try {
-            vid.currentTime = target
-          } catch {
-            /* Safari can throw on aggressive seeks */
-          }
-        }
-      })
-    }
-  })
+  }, [onFail, reduce])
 
   return (
     <div className="absolute inset-0 bg-slate-950">
       <video
         ref={videoRef}
         src={SCROLL_STORY_VIDEO_SRC}
+        autoPlay={!reduce}
+        loop
         muted
         playsInline
         preload="auto"

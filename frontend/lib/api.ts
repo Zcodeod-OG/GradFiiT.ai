@@ -174,6 +174,24 @@ export const uploadApi = {
       timeout: HEAVY_BACKEND_TIMEOUT_MS,
     });
   },
+
+  // Guest-friendly upload. Works with OR without an auth token:
+  //   - Logged in: file lands in the user's private S3 prefix.
+  //   - Anonymous: file lands in public-uploads/ with a 24h S3 lifecycle
+  //     expiry; rate-limited per IP by the backend.
+  // Used by the friction-free try-on flow on /try.
+  uploadPublicImage: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post<{ s3_key: string; url: string; guest: boolean }>(
+      "/api/upload/public-image",
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: HEAVY_BACKEND_TIMEOUT_MS,
+      }
+    );
+  },
 };
 
 // Garments API
@@ -473,7 +491,56 @@ export type ComboTryOnResponse = {
   };
 };
 
+// Anonymous quick-preview response from POST /api/tryon/preview. Same
+// payload shape returned to authed callers; `anon_quota` is only present
+// when no auth token was sent.
+export type TryOnPreviewApiResponse = {
+  result_image_url: string;
+  person_image_url_used: string;
+  garment_image_url: string;
+  quality: string;
+  mode: string;
+  pose_engine: string;
+  processing_time_ms: number;
+  cached: boolean;
+  personalized: boolean;
+  fallback_model_used: boolean;
+  anon_quota?: {
+    used: number;
+    limit: number;
+    remaining: number;
+  };
+};
+
 export const tryonApi = {
+  // Single-stage low-latency try-on. Works WITHOUT an auth token: powers
+  // the guest /try flow so first-time visitors can see a real result
+  // before being asked to sign in. Authed callers can also use it for
+  // sidebar previews (extension).
+  preview: (data: {
+    garment_image_url: string;
+    person_image_url?: string;
+    garment_description?: string;
+    quality?: "fast" | "balanced" | "best";
+    mode?: TryOnMode;
+    use_yolo11_pose?: boolean;
+  }) =>
+    api.post<{ success: boolean; data: TryOnPreviewApiResponse }>(
+      "/api/tryon/preview",
+      {
+        garment_image_url: data.garment_image_url,
+        person_image_url: data.person_image_url,
+        garment_description: data.garment_description || "a garment",
+        quality: data.quality || "fast",
+        mode: data.mode || "2d",
+        use_yolo11_pose: data.use_yolo11_pose ?? false,
+        preview_only: true,
+      },
+      {
+        timeout: HEAVY_BACKEND_TIMEOUT_MS,
+      }
+    ),
+
   // `personImageUrl` is optional: when omitted, the backend uses the
   // saved default person photo (POST /api/user/person-photo). Throws
   // 422 if the user has neither a default nor an explicit URL.

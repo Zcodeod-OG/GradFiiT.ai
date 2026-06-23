@@ -16,7 +16,7 @@
 (function () {
   // __GRADFIT_STORE_BUILD__ - set to "1" by scripts/package-store.sh for
   // Chrome/Edge/Opera/Brave submissions (omits localhost dev origins).
-  var STORE_BUILD = __GRADFIT_STORE_BUILD__ === "1";
+  var STORE_BUILD = "__GRADFIT_STORE_BUILD__" === "1";
 
   // __GRADFIT_APP_URL__ - replaced at build time by scripts/build.sh
   var APP_URL = "https://gradfit.tech";

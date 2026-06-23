@@ -74,7 +74,7 @@ echo "==> Restoring config.js dev placeholder (non-store)"
 export GRADFIT_STORE_BUILD=0
 bash scripts/build.sh
 tmp="$(mktemp)"
-sed 's/var STORE_BUILD = true;/var STORE_BUILD = __GRADFIT_STORE_BUILD__ === "1";/' config.js > "$tmp"
+sed 's/var STORE_BUILD = true;/var STORE_BUILD = "__GRADFIT_STORE_BUILD__" === "1";/' config.js > "$tmp"
 mv "$tmp" config.js
 
 if command -v shasum >/dev/null 2>&1; then

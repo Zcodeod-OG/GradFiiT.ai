@@ -16,7 +16,10 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from collections import defaultdict, deque
+from threading import Lock
+
+from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -43,6 +46,49 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tryon", tags=["Virtual Try-On"])
 _QUICK_PREVIEW_CACHE: dict[str, Dict[str, Any]] = {}
+
+# Per-IP rolling 24h counter for anonymous /preview calls. Keeps guest
+# generations free (great for funnel conversion) while stopping abuse.
+_ANON_PREVIEW_HITS: dict[str, deque] = defaultdict(deque)
+_ANON_PREVIEW_LOCK = Lock()
+_ANON_PREVIEW_WINDOW_SECONDS = 24 * 3600
+
+
+def _anon_client_ip(request: Request | None) -> str:
+    if request is None:
+        return "anon"
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip() or "anon"
+    if request.client and request.client.host:
+        return request.client.host
+    return "anon"
+
+
+def _check_anon_preview_quota(ip: str) -> int:
+    """Bump+return anon preview count for IP. Raises 429 when over limit."""
+    limit = max(0, int(getattr(settings, "ANON_TRYON_DAILY_LIMIT", 3)))
+    if limit == 0:
+        raise HTTPException(
+            status_code=403,
+            detail="Guest try-ons are disabled. Please sign in to continue.",
+        )
+    now = time.time()
+    cutoff = now - _ANON_PREVIEW_WINDOW_SECONDS
+    with _ANON_PREVIEW_LOCK:
+        bucket = _ANON_PREVIEW_HITS[ip]
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"You've used your {limit} free guest try-ons for today. "
+                    "Sign in (Google / GitHub / Facebook) for unlimited tries."
+                ),
+            )
+        bucket.append(now)
+        return len(bucket)
 
 
 # How long presigned image URLs in try-on responses stay valid. 1h is
@@ -947,14 +993,21 @@ def generate_combo_tryon(
 @router.post("/preview")
 def generate_quick_preview(
     data: TryOnPreviewCreate,
+    request: Request,
     current_user: User | None = Depends(get_optional_active_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Generate a fast quick-preview image for extension sidebar usage.
+    """Generate a fast quick-preview image.
 
-    Uses Stage 1 (OOTDiffusion) only for low-latency preview output and supports
-    optional user personalization when auth token is provided.
+    Powers both the Chrome extension sidebar AND the friction-free guest
+    try-on on /try. Uses a single-stage pipeline for low latency. Anonymous
+    callers are capped by per-IP daily quota; authed callers are unlimited
+    here (their own tier quota applies on /generate).
     """
+    anon_used: int | None = None
+    if current_user is None:
+        anon_used = _check_anon_preview_quota(_anon_client_ip(request))
+
     if not _is_http_url(data.garment_image_url):
         raise HTTPException(status_code=400, detail="garment_image_url must be a valid http(s) URL")
 
@@ -992,6 +1045,13 @@ def generate_quick_preview(
     if cached_payload:
         payload = dict(cached_payload)
         payload["cached"] = True
+        if anon_used is not None:
+            limit = int(getattr(settings, "ANON_TRYON_DAILY_LIMIT", 3))
+            payload["anon_quota"] = {
+                "used": anon_used,
+                "limit": limit,
+                "remaining": max(0, limit - anon_used),
+            }
         return {"success": True, "data": payload}
 
     started = time.perf_counter()
@@ -1023,6 +1083,13 @@ def generate_quick_preview(
         ).model_dump()
 
         _set_cached_preview(cache_key, response_payload)
+        if anon_used is not None:
+            limit = int(getattr(settings, "ANON_TRYON_DAILY_LIMIT", 3))
+            response_payload["anon_quota"] = {
+                "used": anon_used,
+                "limit": limit,
+                "remaining": max(0, limit - anon_used),
+            }
         return {"success": True, "data": response_payload}
     except Exception as exc:
         logger.error("Quick preview generation failed: %s", exc)

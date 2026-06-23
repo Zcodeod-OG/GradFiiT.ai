@@ -801,6 +801,29 @@ class Settings(BaseSettings):
         description="In-memory cache TTL for quick preview responses"
     )
 
+    # ==================== Anonymous Try-On (friction-free guest mode) ====================
+    # Visitors hit /try without an account and can generate this many previews
+    # per day per IP before we soft-prompt sign-in. Set to 0 to disable guest
+    # mode entirely.
+    ANON_TRYON_DAILY_LIMIT: int = Field(
+        default=3,
+        description="Per-IP daily cap on anonymous /api/tryon/preview calls"
+    )
+
+    # S3 prefix where anonymous uploads land. Tag with a 24h lifecycle rule in
+    # the bucket so guest images auto-expire and don't bloat storage.
+    S3_PUBLIC_FOLDER: str = Field(
+        default="public-uploads",
+        description="S3 key prefix for unauthenticated public uploads"
+    )
+
+    # Per-IP cap on /api/upload/public-image to stop drive-by abuse. Generous
+    # enough for a real user (multiple retries) but well below scripted floods.
+    ANON_PUBLIC_UPLOAD_HOURLY_LIMIT: int = Field(
+        default=20,
+        description="Per-IP hourly cap on anonymous public uploads"
+    )
+
     EMBEDDING_CACHE_TTL_SECONDS: int = Field(
         default=86400,
         description="TTL for cached CLIP embeddings"

@@ -59,6 +59,37 @@ class StorageService:
         except ClientError as e:
             raise Exception(f"Failed to upload garment to S3: {str(e)}")
 
+    def upload_public(
+        self, file_obj: BinaryIO, filename: str, content_type: Optional[str] = None
+    ) -> Tuple[str, str]:
+        """Upload an anonymous guest image to the public-uploads/ prefix.
+
+        Uses a UUID key under settings.S3_PUBLIC_FOLDER so guest uploads are
+        isolated from user-owned objects. Pair with an S3 lifecycle rule on
+        that prefix (Expiration: 1 day) so guest images auto-purge.
+        """
+        file_ext = (
+            filename.split(".")[-1].lower()
+            if filename and "." in filename
+            else "jpg"
+        )
+        if file_ext not in {"jpg", "jpeg", "png", "webp"}:
+            file_ext = "jpg"
+        prefix = (settings.S3_PUBLIC_FOLDER or "public-uploads").strip("/") or "public-uploads"
+        key = f"{prefix}/{uuid.uuid4()}.{file_ext}"
+        ct = content_type or ("image/png" if file_ext == "png" else "image/jpeg")
+        try:
+            self.s3_client.upload_fileobj(
+                file_obj,
+                self.bucket_name,
+                key,
+                ExtraArgs={"ContentType": ct},
+            )
+            url = f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
+            return key, url
+        except ClientError as e:
+            raise Exception(f"Failed to upload public file to S3: {str(e)}")
+
     def delete_file(self, key: str) -> bool:
         """Delete a file from S3"""
         try:
