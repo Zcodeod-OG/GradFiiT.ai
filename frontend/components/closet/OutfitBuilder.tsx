@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { CanvasLoader } from "@/components/ui/loading-placeholder";
 import {
   type ComboQuality,
   type Garment,
@@ -240,10 +241,11 @@ export function OutfitBuilder({
                 className="size-full object-cover"
               />
             ) : renderState.kind === "rendering" ? (
-              <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" />
-                Rendering combo… this can take 30-90s.
-              </div>
+              <CanvasLoader
+                aspect="portrait"
+                hint="Rendering combo… this can take 30-90s."
+                className="!aspect-auto !rounded-2xl size-full"
+              />
             ) : renderState.kind === "error" ? (
               <p className="max-w-sm px-6 text-center text-sm text-destructive">
                 {renderState.message}

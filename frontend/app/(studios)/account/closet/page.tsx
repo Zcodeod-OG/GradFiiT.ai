@@ -1,6 +1,7 @@
 "use client";
 
-import { Loader2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
+import { GalleryGridSkeleton } from "@/components/ui/loading-placeholder";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -304,10 +305,7 @@ export default function ClosetPage() {
       }
     >
       {loading ? (
-        <div className="flex items-center gap-3 text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          Loading your closet…
-        </div>
+        <GalleryGridSkeleton count={8} />
       ) : totalCount === 0 ? (
         <EmptyState onAdd={() => setAddOpen(true)} />
       ) : (

@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { BookmarkPlus, Loader2, Sparkles, WandSparkles } from "lucide-react";
+import { GalleryGridSkeleton } from "@/components/ui/loading-placeholder";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -115,12 +116,7 @@ export function OutfitsGallery({
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
-        Composing outfits from your closet…
-      </div>
-    );
+    return <GalleryGridSkeleton count={3} compact />;
   }
 
   if (outfits.length === 0) {

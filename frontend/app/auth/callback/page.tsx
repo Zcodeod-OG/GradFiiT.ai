@@ -3,8 +3,8 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { PageLoader } from "@/components/ui/loading-placeholder";
 
 function AuthCallbackInner() {
   const router = useRouter();
@@ -50,22 +50,16 @@ function AuthCallbackInner() {
   }, [loginWithOAuthToken, router, searchParams]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-4">
-      <Loader2 className="size-8 animate-spin text-muted-foreground" aria-hidden />
-      <p className="text-sm text-muted-foreground">Completing sign-in…</p>
-    </div>
+    <PageLoader
+      title="Completing sign-in"
+      subtitle="Hold on while we set up your account…"
+    />
   );
 }
 
 export default function AuthCallbackPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="size-8 animate-spin text-muted-foreground" aria-hidden />
-        </div>
-      }
-    >
+    <Suspense fallback={<PageLoader title="Loading" />}>
       <AuthCallbackInner />
     </Suspense>
   );

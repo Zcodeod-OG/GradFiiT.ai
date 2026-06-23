@@ -325,3 +325,24 @@ h6,
     scroll-behavior: auto !important;
   }
 }
+
+/* Shimmer sweep used by <Shimmer /> and <CanvasLoader /> in
+ * components/ui/loading-placeholder.tsx. Sweeps a translucent highlight
+ * left → right across the placeholder so loading surfaces feel modern
+ * instead of stalling on a static pulse. The translate distance is 200%
+ * (not 100%) so the leading edge fully exits the right side before the
+ * cycle restarts -- avoids the brief visible "snap" some browsers show
+ * on the wrap-around.
+ */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.6s ease-in-out infinite;
+}

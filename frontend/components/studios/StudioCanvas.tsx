@@ -1,11 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
 import { ReactNode } from "react";
 
 import { crossDissolve } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { LoadingDots } from "@/components/ui/loading-placeholder";
 
 type StudioCanvasProps = {
   state: "idle" | "loading" | "result" | "error";
@@ -58,10 +58,16 @@ export function StudioCanvas({
             initial="initial"
             animate="animate"
             exit="exit"
-            className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground overflow-hidden"
           >
-            <Loader2 className="size-6 animate-spin" />
-            <span>{loadingHint ?? "Generating on the FLUX endpoint…"}</span>
+            {/* Shimmer wash so the canvas feels alive while the model
+                spins up; LoadingDots sit on top of it. */}
+            <div
+              aria-hidden
+              className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent dark:via-white/10"
+            />
+            <LoadingDots size="lg" className="relative text-foreground/70" />
+            <span className="relative">{loadingHint ?? "Generating on the FLUX endpoint…"}</span>
           </motion.div>
         )}
 

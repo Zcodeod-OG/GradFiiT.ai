@@ -45,6 +45,7 @@ import { PhotoWizard } from "@/components/onboarding/PhotoWizard"
 import { PipelineMeter } from "@/components/PipelineMeter"
 import { useTryOnLiveStatus } from "@/components/hooks/useTryOnLiveStatus"
 import { CommandPalette, useCommandPaletteToggle } from "@/components/CommandPalette"
+import { PageLoader } from "@/components/ui/loading-placeholder"
 import { useDropzone } from "react-dropzone"
 import { useAuth } from "@/lib/auth"
 import { garmentsApi, tryonApi, uploadApi, userApi } from "@/lib/api"
@@ -606,12 +607,10 @@ export default function Page() {
 
   if (!isAuthReady || isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex items-center gap-3 text-muted-foreground">
-          <Loader2 className="size-5 animate-spin" />
-          Loading your workspace...
-        </div>
-      </div>
+      <PageLoader
+        title="Loading your workspace"
+        subtitle="Pulling your closet, try-ons, and preferences…"
+      />
     )
   }
 
