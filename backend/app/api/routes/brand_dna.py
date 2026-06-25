@@ -7,7 +7,7 @@ care whether a row exists yet.
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -19,6 +19,24 @@ from app.models.user import User
 from app.schemas.studios import BrandDNAResponse, BrandDNAUpdate
 
 router = APIRouter(prefix="/api/brand-dna", tags=["brand-dna"])
+
+
+def _lora_uri_is_valid(uri: str) -> bool:
+    """Best-effort check that a pasted LoRA URI looks usable."""
+    value = (uri or "").strip()
+    if not value:
+        return False
+    if value.startswith("s3://"):
+        return value.endswith(".safetensors")
+    if value.startswith(("http://", "https://")):
+        return ".safetensors" in value.lower()
+    return False
+
+
+def _resolve_lora_status(lora_uri: Optional[str]) -> str:
+    if not lora_uri or not str(lora_uri).strip():
+        return "none"
+    return "ready" if _lora_uri_is_valid(str(lora_uri)) else "none"
 
 
 def _get_or_create(db: Session, user_id: int) -> BrandDNA:
@@ -58,7 +76,7 @@ def update_brand_dna(
     for field, value in payload.items():
         setattr(row, field, value)
     if "lora_uri" in payload:
-        row.lora_status = "ready" if payload["lora_uri"] else "none"
+        row.lora_status = _resolve_lora_status(payload.get("lora_uri"))
     db.commit()
     db.refresh(row)
     return row

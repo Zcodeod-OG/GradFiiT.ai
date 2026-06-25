@@ -19,6 +19,8 @@ import {
 import { getApiErrorMessage } from "@/lib/api-error";
 import { fadeUp, staggerContainer } from "@/lib/motion";
 
+import { ComboTryOnModal } from "./ComboTryOnModal";
+
 type OutfitsGalleryProps = {
   /** When the closet changes meaningfully (add/delete), bump this so we refetch. */
   refreshKey?: number;
@@ -36,6 +38,13 @@ export function OutfitsGallery({
   const [busy, setBusy] = useState<Record<string, "try" | "save" | undefined>>(
     {}
   );
+  // The combo currently being rendered in the result modal, if any.
+  const [activeTryon, setActiveTryon] = useState<{
+    tryonId: number;
+    garmentIds: number[];
+    name: string;
+    notes: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +71,13 @@ export function OutfitsGallery({
   const outfitKey = (o: OutfitRecommendation) =>
     o.garments.map((g) => g.id).join("-");
 
+  const outfitName = (outfit: OutfitRecommendation) =>
+    outfit.garments
+      .map((g) => g.name)
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(" + ") || "New look";
+
   const handleTry = async (outfit: OutfitRecommendation) => {
     const key = outfitKey(outfit);
     // Combo try-on is capped at 3 garments. Trim accessories first
@@ -84,7 +100,12 @@ export function OutfitsGallery({
       const res = await tryonApi.combo(ids);
       const tryonId = res.data?.data?.tryon_id;
       if (!tryonId) throw new Error("No try-on id returned");
-      toast.success("Combo try-on started — check the Looks tab when ready.");
+      setActiveTryon({
+        tryonId,
+        garmentIds: ids,
+        name: outfitName(outfit),
+        notes: outfit.stylist_note || outfit.reason,
+      });
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Could not start try-on."));
     } finally {
@@ -132,6 +153,7 @@ export function OutfitsGallery({
   }
 
   return (
+    <>
     <motion.div
       key={refreshKey}
       initial="hidden"
@@ -184,9 +206,30 @@ export function OutfitsGallery({
                 })}
               </div>
 
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {outfit.reason}
-              </p>
+              <div className="flex flex-col gap-1.5">
+                {outfit.stylist_note ? (
+                  <span className="inline-flex w-fit items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/80">
+                    <WandSparkles className="size-3" />
+                    Stylist
+                  </span>
+                ) : null}
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {outfit.stylist_note || outfit.reason}
+                </p>
+                {outfit.alternatives && outfit.alternatives.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {outfit.alternatives.map((alt, i) => (
+                      <Badge
+                        key={`${alt}-${i}`}
+                        variant="secondary"
+                        className="rounded-full text-[10px] font-normal"
+                      >
+                        {alt}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
 
               {outfit.palette.length > 0 ? (
                 <div className="flex items-center gap-1.5">
@@ -238,6 +281,19 @@ export function OutfitsGallery({
         );
       })}
     </motion.div>
+
+    <ComboTryOnModal
+      open={activeTryon !== null}
+      onOpenChange={(open) => {
+        if (!open) setActiveTryon(null);
+      }}
+      tryonId={activeTryon?.tryonId ?? null}
+      garmentIds={activeTryon?.garmentIds ?? []}
+      suggestedName={activeTryon?.name ?? "New look"}
+      notes={activeTryon?.notes ?? null}
+      onLookSaved={onLookSaved}
+    />
+    </>
   );
 }
 

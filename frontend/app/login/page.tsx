@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { API_BASE_URL } from "@/lib/api"
 import { getApiErrorMessage } from "@/lib/api-error"
+import { openOAuth } from "@/lib/platform"
 import { useAuth } from "@/lib/auth"
 
 /**
@@ -54,7 +55,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-10">
+    <div className="min-h-dvh flex items-center justify-center px-4 py-10 safe-area-top pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_15%_10%,oklch(0.76_0.09_250/.28),transparent_55%),radial-gradient(circle_at_90%_20%,oklch(0.76_0.08_190/.2),transparent_58%)]" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -80,9 +81,7 @@ export default function LoginPage() {
                 type="button"
                 variant="outline"
                 className="w-full justify-center h-11"
-                onClick={() => {
-                  window.location.href = `${API_BASE_URL}/api/auth/oauth/google/authorize`
-                }}
+                onClick={() => void openOAuth("google", API_BASE_URL)}
               >
                 Continue with Google
               </Button>
@@ -90,9 +89,7 @@ export default function LoginPage() {
                 type="button"
                 variant="outline"
                 className="w-full justify-center h-11"
-                onClick={() => {
-                  window.location.href = `${API_BASE_URL}/api/auth/oauth/github/authorize`
-                }}
+                onClick={() => void openOAuth("github", API_BASE_URL)}
               >
                 Continue with GitHub
               </Button>
@@ -100,9 +97,7 @@ export default function LoginPage() {
                 type="button"
                 variant="outline"
                 className="w-full justify-center h-11"
-                onClick={() => {
-                  window.location.href = `${API_BASE_URL}/api/auth/oauth/facebook/authorize`
-                }}
+                onClick={() => void openOAuth("facebook", API_BASE_URL)}
               >
                 Continue with Facebook
               </Button>

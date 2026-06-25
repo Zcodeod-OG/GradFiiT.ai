@@ -12,6 +12,7 @@ const TITLE_BY_PATH: Record<string, string> = {
   "/studios/tryon": "Try-On Studio",
   "/studios/design": "Design Studio",
   "/studios/stylist": "Stylist Studio",
+  "/account/closet": "Closet",
   "/account/brand-dna": "Brand DNA",
   "/account/billing": "Plan & Billing",
 };

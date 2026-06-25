@@ -25,8 +25,10 @@ import { cn } from "@/lib/utils";
 type GarmentDetailModalProps = {
   garment: Garment | null;
   onClose: () => void;
-  // Optional: when the user picks a suggestion, we swap content in place
-  // without remounting the modal. The parent doesn't have to do anything.
+  // Jump to the Outfit Builder pre-filled with these garment ids. When
+  // provided, suggestion chips become "Complete the look" actions that
+  // seed the builder with [anchor, suggestion].
+  onBuildOutfit?: (garmentIds: number[]) => void;
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -155,6 +157,7 @@ function TiltedHero({
 export function GarmentDetailModal({
   garment: incomingGarment,
   onClose,
+  onBuildOutfit,
 }: GarmentDetailModalProps) {
   const router = useRouter();
   const reduce = !!useReducedMotion();
@@ -332,7 +335,7 @@ export function GarmentDetailModal({
                 <div className="mt-auto flex flex-col gap-3 pt-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] uppercase tracking-[0.22em] text-white/55">
-                      Pairs well with
+                      {onBuildOutfit ? "Complete the look" : "Pairs well with"}
                     </span>
                     {loadingSuggestions ? (
                       <span className="text-[10px] text-white/40">Loading…</span>
@@ -341,6 +344,11 @@ export function GarmentDetailModal({
                   <SuggestionsRail
                     suggestions={suggestions}
                     onPick={(g) => setGarment(g)}
+                    onBuild={
+                      onBuildOutfit && garment
+                        ? (s) => onBuildOutfit([garment.id, s.id])
+                        : undefined
+                    }
                   />
                 </div>
               </div>
@@ -355,9 +363,13 @@ export function GarmentDetailModal({
 function SuggestionsRail({
   suggestions,
   onPick,
+  onBuild,
 }: {
   suggestions: GarmentSuggestion[];
   onPick: (g: Garment) => void;
+  // When set, picking a suggestion seeds the Outfit Builder with the
+  // anchor + this piece instead of swapping the detail view in place.
+  onBuild?: (g: GarmentSuggestion) => void;
 }) {
   if (suggestions.length === 0) {
     return (
@@ -374,11 +386,13 @@ function SuggestionsRail({
           <button
             key={s.id}
             type="button"
-            onClick={() => onPick(s)}
+            onClick={() => (onBuild ? onBuild(s) : onPick(s))}
             className={cn(
               "group/sug relative aspect-[3/4] w-24 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5 transition-colors hover:border-white/30"
             )}
-            aria-label={`Switch detail to ${s.name}`}
+            aria-label={
+              onBuild ? `Build outfit with ${s.name}` : `Switch detail to ${s.name}`
+            }
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -387,7 +401,7 @@ function SuggestionsRail({
               className="size-full object-contain p-1.5"
             />
             <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-2 py-1 text-[9px] font-medium uppercase tracking-wider text-white opacity-0 group-hover/sug:opacity-100">
-              {s.reason}
+              {onBuild ? "Build outfit" : s.reason}
             </span>
           </button>
         );

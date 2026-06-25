@@ -1,12 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import Link from "next/link";
+import { BookmarkPlus, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { BrandDNAToggle } from "@/components/studios/BrandDNAToggle";
 import { GenerationGallery } from "@/components/studios/GenerationGallery";
-import { PromptPanel } from "@/components/studios/PromptPanel";
+import { MultiImagePicker } from "@/components/studios/MultiImagePicker";
+import { ResponsivePromptPanel } from "@/components/studios/ResponsivePromptPanel";
 import { RefImageDropzone } from "@/components/studios/RefImageDropzone";
 import { StudioCanvas } from "@/components/studios/StudioCanvas";
 import { StudioShell } from "@/components/studios/StudioShell";
@@ -15,13 +18,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { studiosApi, type Design } from "@/lib/api";
 import { fadeUp } from "@/lib/motion";
+import { classifyStudioError } from "@/lib/studio-errors";
 
 export default function DesignStudioPage() {
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
   const [sketchUrl, setSketchUrl] = useState<string | null>(null);
   const [styleUrl, setStyleUrl] = useState<string | null>(null);
+  const [useBrandDna, setUseBrandDna] = useState(true);
   const [history, setHistory] = useState<Design[]>([]);
+  const [lastDesign, setLastDesign] = useState<Design | null>(null);
   const [state, setState] =
     useState<"idle" | "loading" | "result" | "error">("idle");
   const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -31,9 +37,7 @@ export default function DesignStudioPage() {
     studiosApi
       .listDesigns()
       .then((res) => setHistory(res.data || []))
-      .catch(() => {
-        // anonymous - leave empty
-      });
+      .catch(() => {});
   }, []);
 
   const submit = async () => {
@@ -44,6 +48,7 @@ export default function DesignStudioPage() {
     setState("loading");
     setErrorMessage(null);
     setResultUrl(null);
+    setLastDesign(null);
     try {
       const res = await studiosApi.generateDesign({
         prompt: prompt.trim(),
@@ -51,21 +56,32 @@ export default function DesignStudioPage() {
         sketch_image_url: sketchUrl || undefined,
         style_reference_url: styleUrl || undefined,
         num_images: 2,
+        use_brand_dna: useBrandDna,
       });
       const design = res.data;
       if (!design.primary_image_url) {
         throw new Error(design.error_message || "No image returned");
       }
       setResultUrl(design.primary_image_url);
+      setLastDesign(design);
       setState("result");
       setHistory((prev) => [design, ...prev]);
     } catch (err) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } }).response?.data
-          ?.detail || (err as Error).message;
-      setErrorMessage(detail);
+      const info = classifyStudioError(err);
+      setErrorMessage(info.message);
       setState("error");
-      toast.error(detail);
+      toast.error(info.message);
+    }
+  };
+
+  const pickVariant = async (url: string) => {
+    setResultUrl(url);
+    if (!lastDesign) return;
+    try {
+      const res = await studiosApi.setDesignPrimary(lastDesign.id, url);
+      setLastDesign(res.data);
+    } catch {
+      toast.error("Could not set primary image.");
     }
   };
 
@@ -73,7 +89,7 @@ export default function DesignStudioPage() {
     try {
       await studiosApi.deleteDesign(id);
       setHistory((prev) => prev.filter((d) => d.id !== id));
-    } catch (err) {
+    } catch {
       toast.error("Could not delete design");
     }
   };
@@ -88,7 +104,7 @@ export default function DesignStudioPage() {
           onClick={submit}
           disabled={state === "loading" || !prompt.trim()}
           size="lg"
-          className="rounded-full"
+          className="rounded-full min-h-[44px]"
         >
           <Sparkles className="size-4" />
           {state === "loading" ? "Generating…" : "Generate"}
@@ -99,10 +115,11 @@ export default function DesignStudioPage() {
         variants={fadeUp}
         className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]"
       >
-        <div className="flex justify-center">
+        <div className="flex flex-col gap-4">
           <StudioCanvas
             state={state}
             errorMessage={errorMessage}
+            onRetry={submit}
             emptyHint="Type a prompt to bring a new garment to life."
             loadingHint="FLUX is rendering your garment…"
           >
@@ -115,9 +132,43 @@ export default function DesignStudioPage() {
               />
             ) : null}
           </StudioCanvas>
+
+          <MultiImagePicker
+            images={lastDesign?.image_urls || (resultUrl ? [resultUrl] : [])}
+            selected={resultUrl}
+            onSelect={pickVariant}
+          />
+
+          {lastDesign ? (
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm" className="rounded-full">
+                <Link href={`/studios/design/${lastDesign.id}`}>Open detail</Link>
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-full min-h-[44px]"
+                onClick={() =>
+                  void studiosApi
+                    .saveDesignToCloset(lastDesign.id, {
+                      name: lastDesign.prompt.slice(0, 80),
+                    })
+                    .then(() => toast.success("Saved to closet."))
+                    .catch((err) =>
+                      toast.error(classifyStudioError(err).message)
+                    )
+                }
+              >
+                <BookmarkPlus className="size-3.5" />
+                Save to closet
+              </Button>
+            </div>
+          ) : null}
         </div>
 
-        <PromptPanel title="Prompt">
+        <ResponsivePromptPanel title="Prompt">
+          <BrandDNAToggle enabled={useBrandDna} onChange={setUseBrandDna} />
+
           <div className="space-y-2">
             <Label htmlFor="prompt">Describe the garment</Label>
             <textarea
@@ -140,7 +191,7 @@ export default function DesignStudioPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <RefImageDropzone
               label="Sketch"
               hint="Used as a Canny ControlNet hint."
@@ -154,7 +205,7 @@ export default function DesignStudioPage() {
               onChange={setStyleUrl}
             />
           </div>
-        </PromptPanel>
+        </ResponsivePromptPanel>
       </motion.div>
 
       <motion.section variants={fadeUp} className="mt-12">

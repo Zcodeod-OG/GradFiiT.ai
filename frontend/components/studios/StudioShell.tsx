@@ -50,7 +50,7 @@ export function StudioShell({
       animate="show"
       variants={staggerContainer(0.05, 0.06)}
       className={cn(
-        "flex flex-col gap-10 px-6 lg:px-12 py-10 lg:py-14 max-w-[1480px] mx-auto w-full",
+        "flex flex-col gap-8 lg:gap-10 px-4 sm:px-6 lg:px-12 py-6 sm:py-10 lg:py-14 max-w-[1480px] mx-auto w-full",
         className
       )}
     >
@@ -91,7 +91,11 @@ export function StudioShell({
           </div>
         </div>
 
-        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+        {actions ? (
+          <div className="flex flex-wrap gap-2 lg:static sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem)] z-20 -mx-4 px-4 py-2 bg-background/90 backdrop-blur-md border-b border-border/40 lg:mx-0 lg:px-0 lg:py-0 lg:bg-transparent lg:backdrop-blur-none lg:border-0">
+            {actions}
+          </div>
+        ) : null}
       </motion.header>
 
       <div className="tnb-rule">

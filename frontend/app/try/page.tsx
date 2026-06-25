@@ -32,10 +32,12 @@ import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { API_BASE_URL, uploadApi, garmentsApi, tryonApi, userApi } from "@/lib/api"
 import { getApiErrorMessage } from "@/lib/api-error"
+import { openOAuth, captureNativePhoto, isNativePlatform } from "@/lib/platform"
 import { useAuth } from "@/lib/auth"
 import { TIER_LABELS, TIER_TO_ALLOWED_MODES, type SubscriptionTier, type TryOnMode } from "@/lib/plans"
 import { ProcessingStatus, type ProcessingStep } from "@/components/ProcessingStatus"
 import { ResultsModal } from "@/components/ResultsModal"
+import { MobileStudioNav } from "@/components/studios/MobileStudioNav"
 import { MouseFollowGradient } from "@/components/ui/mouse-follow-gradient"
 import { PhotoWizard } from "@/components/onboarding/PhotoWizard"
 
@@ -67,14 +69,11 @@ const qualityOptions: Array<{
   value: QualityOption
   label: string
   time: string
-  description: string
-  costUsd: string
   xp: number
 }> = [
-  // Fashn primary: fast + balanced skip Layer-2 by default (POSTPROCESS_LANES=best).
-  { value: "fast", label: "Fast", time: "~4–8s", description: "Single Fashn pass, raw output", costUsd: "~$0.04", xp: 10 },
-  { value: "balanced", label: "Balanced", time: "~6–10s", description: "Fashn balanced mode, raw output", costUsd: "~$0.06", xp: 20 },
-  { value: "best", label: "Best", time: "~15–35s", description: "tryon-max + quality stack (finetuned path later)", costUsd: "~$0.12+", xp: 30 },
+  { value: "fast", label: "Fast", time: "~4–8s", xp: 10 },
+  { value: "balanced", label: "Balanced", time: "~6–10s", xp: 20 },
+  { value: "best", label: "Best", time: "~15–35s", xp: 30 },
 ]
 
 const fastProcessingSteps: ProcessingStep[] = [
@@ -574,11 +573,18 @@ function TryOnPageInner() {
   })
 
   // Camera capture
-  const handleTakePhoto = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click()
+  const handleTakePhoto = async () => {
+    if (isNativePlatform()) {
+      const captured = await captureNativePhoto();
+      if (captured) {
+        await handleImageUpload(captured.file, "person");
+      }
+      return;
     }
-  }
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
 
   const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -928,7 +934,7 @@ function TryOnPageInner() {
   }
 
   return (
-    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+    <div className="min-h-dvh py-4 sm:py-8 px-4 sm:px-6 lg:px-8 relative overflow-x-clip pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pb-8 safe-area-top">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_12%_8%,oklch(0.76_0.09_250/.24),transparent_52%),radial-gradient(circle_at_88%_16%,oklch(0.76_0.08_190/.2),transparent_56%)]" />
       <MouseFollowGradient />
       <div className="max-w-7xl mx-auto relative z-10">
@@ -937,7 +943,7 @@ function TryOnPageInner() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="font-display text-4xl md:text-5xl font-bold tracking-tight text-foreground mb-2">
+          <h1 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-foreground mb-2">
             Virtual Try-On
           </h1>
           <p className="text-muted-foreground text-base md:text-lg">
@@ -1001,7 +1007,7 @@ function TryOnPageInner() {
           </div>
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-3 mb-6">
+        <div className="hidden md:grid gap-4 md:grid-cols-3 mb-6">
           <Card className="bg-gradient-to-br from-fuchsia-50 to-pink-50 border-fuchsia-200/70">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -1529,20 +1535,20 @@ function TryOnPageInner() {
         </div>
 
         {/* Bottom Section - Quality Selector & Generate Button */}
-        <Card className="mb-8">
-          <CardContent className="p-6">
-            <div className="space-y-6">
+        <Card className="mb-4 lg:mb-8 border-0 shadow-none lg:border lg:shadow-sm">
+          <CardContent className="p-4 sm:p-6">
+            <div className="space-y-4 lg:space-y-6">
               {/* Quality Selector */}
               <div>
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <Label className="text-base font-semibold">
                     Quality lane
                   </Label>
-                  <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                  <span className="hidden sm:inline text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                     Press Q · B · F to switch
                   </span>
                 </div>
-                <div className="relative grid grid-cols-3 gap-3">
+                <div className="relative grid grid-cols-3 gap-2 sm:gap-3">
                   {qualityOptions.map((option) => {
                     const active = quality === option.value
                     return (
@@ -1573,15 +1579,9 @@ function TryOnPageInner() {
                           className="sr-only"
                         />
                         <span className="font-semibold text-foreground">{option.label}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {option.description}
-                        </span>
                         <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
                           <span className="rounded-md bg-white/70 px-1.5 py-0.5 font-medium text-foreground">
                             {option.time}
-                          </span>
-                          <span className="rounded-md bg-white/70 px-1.5 py-0.5 font-medium text-foreground">
-                            {option.costUsd}
                           </span>
                         </div>
                         <span className="mt-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -1593,7 +1593,8 @@ function TryOnPageInner() {
                 </div>
               </div>
 
-              {/* Generate Button */}
+              {/* Generate Button — sticky above mobile tab bar */}
+              <div className="mobile-sticky-cta -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 lg:py-0 lg:mx-0 lg:px-0 bg-background/95 backdrop-blur-md lg:bg-transparent lg:backdrop-blur-none border-t border-border/40 lg:border-0">
               <Button
                 onClick={handleGenerate}
                 disabled={
@@ -1603,7 +1604,7 @@ function TryOnPageInner() {
                     ? !(personImage || savedPersonPhotoUrl)
                     : !(personImage || user?.avatar_status === "ready"))
                 }
-                className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary via-sky-500 to-emerald-400 hover:opacity-95"
+                className="w-full min-h-[48px] text-base font-semibold bg-gradient-to-r from-primary via-sky-500 to-emerald-400 hover:opacity-95"
               >
                 {isProcessing ? (
                   <>
@@ -1611,11 +1612,12 @@ function TryOnPageInner() {
                     Generating...
                   </>
                 ) : (
-                  tryonMode === "3d" ? "Generate 3D Try-On + Earn XP" : "Generate 2D Try-On + Earn XP"
+                  tryonMode === "3d" ? "Generate 3D Try-On" : "Generate Try-On"
                 )}
               </Button>
+              </div>
 
-              <p className="text-xs text-muted-foreground">
+              <p className="hidden lg:block text-xs text-muted-foreground">
                 {tryonMode === "3d"
                   ? "3D mode uses SMPL + PIFuHD avatar fitting with 360 model output."
                   : "2D mode uses the Fashn API for fast photorealistic try-ons."}
@@ -1714,9 +1716,7 @@ function TryOnPageInner() {
                 type="button"
                 variant="outline"
                 className="w-full justify-center"
-                onClick={() => {
-                  window.location.href = `${API_BASE_URL}/api/auth/oauth/google/authorize`
-                }}
+                onClick={() => void openOAuth("google", API_BASE_URL)}
               >
                 Continue with Google
               </Button>
@@ -1724,9 +1724,7 @@ function TryOnPageInner() {
                 type="button"
                 variant="outline"
                 className="w-full justify-center"
-                onClick={() => {
-                  window.location.href = `${API_BASE_URL}/api/auth/oauth/github/authorize`
-                }}
+                onClick={() => void openOAuth("github", API_BASE_URL)}
               >
                 Continue with GitHub
               </Button>
@@ -1734,9 +1732,7 @@ function TryOnPageInner() {
                 type="button"
                 variant="outline"
                 className="w-full justify-center"
-                onClick={() => {
-                  window.location.href = `${API_BASE_URL}/api/auth/oauth/facebook/authorize`
-                }}
+                onClick={() => void openOAuth("facebook", API_BASE_URL)}
               >
                 Continue with Facebook
               </Button>
@@ -1799,6 +1795,7 @@ function TryOnPageInner() {
           </form>
         </DialogContent>
       </Dialog>
+      <MobileStudioNav />
     </div>
   )
 }

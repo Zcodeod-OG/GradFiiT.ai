@@ -36,6 +36,11 @@ type OutfitBuilderProps = {
   editingLook: Look | null;
   onClearEditing: () => void;
   onLookSaved: (look: Look) => void;
+  // Garment ids to seed the slots with (e.g. from "Complete the look" in
+  // the garment detail modal). `prefillKey` bumps each time a fresh
+  // prefill is requested so the same ids can be re-applied.
+  prefillGarmentIds?: number[];
+  prefillKey?: number;
 };
 
 const MAX_SLOTS = 3;
@@ -54,6 +59,8 @@ export function OutfitBuilder({
   editingLook,
   onClearEditing,
   onLookSaved,
+  prefillGarmentIds,
+  prefillKey,
 }: OutfitBuilderProps) {
   // Slots hold up to MAX_SLOTS garments in bottom→top order to match
   // the combo endpoint's expectation (`garment_ids` ordered base → top).
@@ -87,6 +94,25 @@ export function OutfitBuilder({
     setSlots(next);
     setRenderState({ kind: "idle" });
   }, [editingLook, garments]);
+
+  // Seed slots from a "Complete the look" request. Keyed on `prefillKey`
+  // so re-picking the same anchor/suggestion pair re-applies the prefill.
+  useEffect(() => {
+    if (!prefillKey || !prefillGarmentIds?.length) return;
+    const next: (Garment | null)[] = Array.from(
+      { length: MAX_SLOTS },
+      () => null
+    );
+    prefillGarmentIds.slice(0, MAX_SLOTS).forEach((id, idx) => {
+      const garment = garments.find((g) => g.id === id);
+      if (garment) next[idx] = garment;
+    });
+    setSlots(next);
+    setRenderState({ kind: "idle" });
+    // garments intentionally omitted: we only re-seed on a new prefill
+    // request, not when the closet list refreshes underneath us.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillKey]);
 
   const filledIds = slots
     .filter((g): g is Garment => g !== null)
@@ -157,7 +183,8 @@ export function OutfitBuilder({
       const deadline = Date.now() + POLL_TIMEOUT_MS;
       while (Date.now() < deadline) {
         const status = await tryonApi.getStatus(tryonId);
-        const payload = status.data;
+        // The status endpoint wraps the snapshot under `data.data`.
+        const payload = status.data?.data;
         if (payload?.result_image_url) {
           setRenderState({
             kind: "result",
@@ -166,10 +193,7 @@ export function OutfitBuilder({
           });
           return;
         }
-        if (
-          payload?.status === "FAILED" ||
-          payload?.status === "failed"
-        ) {
+        if (payload?.status === "failed") {
           throw new Error(payload?.error_message || "Render failed");
         }
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
@@ -310,7 +334,7 @@ export function OutfitBuilder({
         </div>
 
         {/* Garment picker */}
-        <aside className="flex max-h-[640px] flex-col gap-3 rounded-2xl border border-border/40 bg-background/60 p-4 backdrop-blur-md">
+        <aside className="flex max-h-[480px] sm:max-h-[560px] lg:max-h-[640px] flex-col gap-3 rounded-2xl border border-border/40 bg-background/60 p-4 backdrop-blur-md order-last lg:order-none">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium">Tap to add</h3>
             <span className="text-[11px] text-muted-foreground">

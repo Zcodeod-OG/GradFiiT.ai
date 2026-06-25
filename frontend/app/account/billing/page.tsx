@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { ArrowRight, CreditCard, ExternalLink, Loader2 } from "lucide-react"
 
+import { MobileStudioNav } from "@/components/studios/MobileStudioNav"
 import { Button } from "@/components/ui/button"
 import {
   billingApi,
@@ -13,6 +14,7 @@ import {
   type BillingPlansResponse,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { openExternalUrl } from "@/lib/platform"
 
 export default function BillingAccountPage() {
   const router = useRouter()
@@ -55,7 +57,7 @@ export default function BillingAccountPage() {
       setIsOpeningPortal(true)
       const res = await billingApi.openPortal()
       if (res.data?.url) {
-        window.location.href = res.data.url
+        await openExternalUrl(res.data.url)
       }
     } catch (err: unknown) {
       const detail =
@@ -87,7 +89,7 @@ export default function BillingAccountPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background pb-24 pt-16">
+    <main className="min-h-dvh bg-background pb-[calc(5rem+env(safe-area-inset-bottom,0px))] pt-8 sm:pt-16 safe-area-top">
       <div className="container-main max-w-3xl">
         <header className="mb-10 space-y-2">
           <p className="text-sm text-muted-foreground uppercase tracking-wider">
@@ -105,7 +107,7 @@ export default function BillingAccountPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            <section className="surface-panel rounded-2xl p-8 border border-border">
+            <section className="surface-panel rounded-2xl p-5 sm:p-8 border border-border">
               <div className="flex items-start justify-between gap-6 flex-wrap">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
@@ -132,6 +134,7 @@ export default function BillingAccountPage() {
                       onClick={handleOpenPortal}
                       disabled={isOpeningPortal}
                       variant="outline"
+                      className="min-h-[44px]"
                     >
                       {isOpeningPortal ? (
                         <Loader2 className="size-4 animate-spin mr-2" />
@@ -143,7 +146,7 @@ export default function BillingAccountPage() {
                     </Button>
                   )}
                   <Link href="/pricing">
-                    <Button>
+                    <Button className="min-h-[44px]">
                       {data?.current_tier === "free_2d"
                         ? "Upgrade"
                         : "Change plan"}
@@ -160,7 +163,7 @@ export default function BillingAccountPage() {
               )}
             </section>
 
-            <section className="surface-panel rounded-2xl p-8 border border-border">
+            <section className="surface-panel rounded-2xl p-5 sm:p-8 border border-border">
               <h3 className="font-display text-lg font-semibold mb-4">
                 How billing works
               </h3>
@@ -192,6 +195,7 @@ export default function BillingAccountPage() {
           </div>
         )}
       </div>
+      <MobileStudioNav />
     </main>
   )
 }

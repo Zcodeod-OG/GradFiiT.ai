@@ -4,6 +4,7 @@ import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { closeInAppBrowser } from "@/lib/platform";
 import { PageLoader } from "@/components/ui/loading-placeholder";
 
 function AuthCallbackInner() {
@@ -38,6 +39,7 @@ function AuthCallbackInner() {
       }
       try {
         await loginWithOAuthToken(token);
+        await closeInAppBrowser();
         toast.success("Signed in!");
         router.replace("/");
       } catch {

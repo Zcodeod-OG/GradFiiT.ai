@@ -234,6 +234,10 @@ export type OutfitRecommendation = {
   score: number;
   reason: string;
   palette: string[];
+  /** LLM-written rationale (Bedrock). Absent when notes are off/unavailable. */
+  stylist_note?: string | null;
+  /** 0-2 short swap suggestions from the stylist. */
+  alternatives?: string[];
 };
 
 export type OutfitRecommendationsResponse = {
@@ -387,9 +391,8 @@ export type DesignGenerateRequest = {
   seed?: number;
   lora_uri?: string;
   lora_scale?: number;
+  use_brand_dna?: boolean;
 };
-
-export type StylistPiece = {
   slot: string;
   description: string;
   color?: string;
@@ -424,6 +427,7 @@ export type StylistGenerateRequest = {
   num_images?: number;
   lora_uri?: string;
   lora_scale?: number;
+  use_brand_dna?: boolean;
 };
 
 export const studiosApi = {
@@ -432,6 +436,10 @@ export const studiosApi = {
   listDesigns: (skip = 0, limit = 24) =>
     api.get<Design[]>(`/api/studios/design?skip=${skip}&limit=${limit}`),
   getDesign: (id: number) => api.get<Design>(`/api/studios/design/${id}`),
+  setDesignPrimary: (id: number, image_url: string) =>
+    api.put<Design>(`/api/studios/design/${id}/primary`, { image_url }),
+  saveDesignToCloset: (id: number, payload?: { name?: string; category?: string }) =>
+    api.post<Garment>(`/api/studios/design/${id}/save-to-closet`, payload ?? {}),
   deleteDesign: (id: number) => api.delete(`/api/studios/design/${id}`),
 
   generateOutfit: (payload: StylistGenerateRequest) =>
@@ -439,6 +447,10 @@ export const studiosApi = {
   listOutfits: (skip = 0, limit = 24) =>
     api.get<Outfit[]>(`/api/studios/stylist?skip=${skip}&limit=${limit}`),
   getOutfit: (id: number) => api.get<Outfit>(`/api/studios/stylist/${id}`),
+  setOutfitPrimary: (id: number, image_url: string) =>
+    api.put<Outfit>(`/api/studios/stylist/${id}/primary`, { image_url }),
+  saveOutfitToCloset: (id: number, payload?: { name?: string; category?: string }) =>
+    api.post<Garment>(`/api/studios/stylist/${id}/save-to-closet`, payload ?? {}),
   deleteOutfit: (id: number) => api.delete(`/api/studios/stylist/${id}`),
 };
 

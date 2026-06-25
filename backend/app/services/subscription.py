@@ -11,6 +11,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.design import Design
+from app.models.outfit import Outfit
 from app.models.tryon import TryOn, TryOnStatus
 from app.models.user import User
 
@@ -23,6 +25,10 @@ _NON_BILLABLE_STATUSES = (
     TryOnStatus.DEAD_LETTER,
     TryOnStatus.QUALITY_FAILED,
 )
+
+# Studio generations that failed before producing an image also shouldn't
+# count against the shared generation bucket.
+_STUDIO_FAILED_STATUSES = ("failed",)
 
 
 @dataclass(frozen=True)
@@ -184,7 +190,27 @@ def get_usage_snapshot(db: Session, user: User, requested_mode: str) -> dict:
     if plan.code != "ultra":
         query = query.filter(TryOn.tryon_mode == mode)
 
-    used = int(query.scalar() or 0)
+    tryon_used = int(query.scalar() or 0)
+
+    studio_query = (
+        db.query(func.count(Design.id))
+        .filter(Design.user_id == user.id)
+        .filter(Design.status.notin_(_STUDIO_FAILED_STATUSES))
+    )
+    if period_start is not None:
+        studio_query = studio_query.filter(Design.created_at >= period_start)
+    design_used = int(studio_query.scalar() or 0)
+
+    outfit_query = (
+        db.query(func.count(Outfit.id))
+        .filter(Outfit.user_id == user.id)
+        .filter(Outfit.status.notin_(_STUDIO_FAILED_STATUSES))
+    )
+    if period_start is not None:
+        outfit_query = outfit_query.filter(Outfit.created_at >= period_start)
+    outfit_used = int(outfit_query.scalar() or 0)
+
+    used = tryon_used + design_used + outfit_used
     remaining = max(0, plan.limit - used)
 
     return {
@@ -223,6 +249,14 @@ def enforce_tryon_quota(db: Session, user: User, requested_mode: str) -> dict:
         )
 
     return snapshot
+
+
+def enforce_studio_quota(db: Session, user: User) -> dict:
+    """Enforce the shared generation bucket for Design + Stylist studios.
+
+    Studio generations count toward the same plan limit as try-ons so a
+    user's monthly allowance covers every FLUX-backed feature."""
+    return enforce_tryon_quota(db=db, user=user, requested_mode="2d")
 
 
 def list_plan_catalog() -> list[dict]:

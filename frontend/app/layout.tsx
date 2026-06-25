@@ -1,10 +1,11 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { BackendWarmup } from "@/components/BackendWarmup"
+import { NativeShell } from "@/components/NativeShell"
 import "./globals.css"
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -22,6 +23,22 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "GradFiT - Graduate your fit.",
   description: "Wear it before you buy it. Upload one photo, try any outfit from any store on the internet.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "GradFiiT",
+  },
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f8f9fc" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f1117" },
+  ],
 }
 
 export default function RootLayout({
@@ -35,6 +52,7 @@ export default function RootLayout({
           className={`${plusJakarta.variable} ${spaceGrotesk.variable} antialiased bg-background text-foreground`}
       >
       <ThemeProvider>
+        <NativeShell />
         <BackendWarmup />
         {children}
         <Analytics />

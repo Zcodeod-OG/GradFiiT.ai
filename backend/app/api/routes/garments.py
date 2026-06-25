@@ -13,6 +13,7 @@ from app.database import get_db
 from app.config import settings
 from app.models.user import User
 from app.models.garment import Garment
+from app.models.brand_dna import BrandDNA
 from app.schemas.garment import (
     Garment as GarmentSchema,
     GarmentCreate,
@@ -29,6 +30,7 @@ from app.services.garment_suggestions import suggest_pairings
 from app.services.outfit_recommender import recommend_outfits
 from app.services.storage import get_storage
 from app.services.style_profile import build_style_profile
+from app.services.stylist import StylistNote, annotate_outfits
 from app.services.tasks import process_garment_task
 
 logger = logging.getLogger(__name__)
@@ -160,6 +162,13 @@ def get_style_profile(
     )
 
 
+# Cap how many outfits get an LLM rationale per request. Each Bedrock
+# call is sequential with a 6s timeout, so annotating the whole list
+# could block the worker for a long time. The remaining outfits fall
+# back to the deterministic rule-based reason, which is always present.
+_MAX_STYLIST_NOTES = 6
+
+
 @router.get(
     "/outfits/recommendations",
     response_model=OutfitRecommendationsResponse,
@@ -167,6 +176,7 @@ def get_style_profile(
 def get_outfit_recommendations(
     limit: int = 10,
     anchor_id: Optional[int] = None,
+    with_notes: bool = True,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -177,6 +187,12 @@ def get_outfit_recommendations(
     and validates the ``limit`` window. Registered before the
     ``/{garment_id}`` route so the literal ``outfits`` prefix isn't
     coerced as an int garment id.
+
+    When ``with_notes`` is true (default) we ask the Bedrock-backed
+    stylist to narrate the top outfits ("why this works for you"). The
+    LLM layer degrades gracefully: if Bedrock is unavailable each note
+    falls back to the rule-based reason, so the response shape is stable
+    regardless of model availability.
     """
     if limit < 1 or limit > 30:
         raise HTTPException(
@@ -189,14 +205,30 @@ def get_outfit_recommendations(
         limit=limit,
         anchor_garment_id=anchor_id,
     )
+
+    # Stylist notes for the top picks only. The brand guide conditions the
+    # tone/palette references in the rationale when configured.
+    notes: List[Optional[StylistNote]] = [None] * len(suggestions)
+    if with_notes and suggestions:
+        brand = (
+            db.query(BrandDNA)
+            .filter(BrandDNA.user_id == current_user.id)
+            .first()
+        )
+        annotated = annotate_outfits(suggestions[:_MAX_STYLIST_NOTES], brand=brand)
+        for i, note in enumerate(annotated):
+            notes[i] = note
+
     outfits: List[OutfitRecommendationSchema] = []
-    for s in suggestions:
+    for s, note in zip(suggestions, notes):
         outfits.append(
             OutfitRecommendationSchema(
                 garments=[_serialise_garment(g) for g in s.garments],
                 score=s.score,
                 reason=s.reason,
                 palette=list(s.palette),
+                stylist_note=note.rationale if note else None,
+                alternatives=note.alternatives if note else [],
             )
         )
     return OutfitRecommendationsResponse(outfits=outfits)

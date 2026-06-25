@@ -1,12 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { BookmarkPlus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { BrandDNAToggle } from "@/components/studios/BrandDNAToggle";
 import { GenerationGallery } from "@/components/studios/GenerationGallery";
-import { PromptPanel } from "@/components/studios/PromptPanel";
+import { MultiImagePicker } from "@/components/studios/MultiImagePicker";
+import { ResponsivePromptPanel } from "@/components/studios/ResponsivePromptPanel";
 import { RefImageDropzone } from "@/components/studios/RefImageDropzone";
 import { StudioCanvas } from "@/components/studios/StudioCanvas";
 import { StudioShell } from "@/components/studios/StudioShell";
@@ -15,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { studiosApi, type Outfit, type StylistPiece } from "@/lib/api";
 import { fadeUp } from "@/lib/motion";
+import { classifyStudioError } from "@/lib/studio-errors";
 
 const SLOTS = ["top", "bottom", "outerwear", "shoes", "accessory"] as const;
 type Slot = (typeof SLOTS)[number];
@@ -23,11 +27,13 @@ export default function StylistStudioPage() {
   const [prompt, setPrompt] = useState("");
   const [background, setBackground] = useState("studio");
   const [modelRef, setModelRef] = useState<string | null>(null);
+  const [useBrandDna, setUseBrandDna] = useState(true);
   const [pieces, setPieces] = useState<StylistPiece[]>([
     { slot: "top", description: "" },
     { slot: "bottom", description: "" },
   ]);
   const [history, setHistory] = useState<Outfit[]>([]);
+  const [lastOutfit, setLastOutfit] = useState<Outfit | null>(null);
   const [state, setState] =
     useState<"idle" | "loading" | "result" | "error">("idle");
   const [resultUrl, setResultUrl] = useState<string | null>(null);
@@ -68,6 +74,7 @@ export default function StylistStudioPage() {
     setState("loading");
     setErrorMessage(null);
     setResultUrl(null);
+    setLastOutfit(null);
     try {
       const res = await studiosApi.generateOutfit({
         prompt: prompt.trim(),
@@ -75,21 +82,32 @@ export default function StylistStudioPage() {
         background,
         model_reference_url: modelRef || undefined,
         num_images: 2,
+        use_brand_dna: useBrandDna,
       });
       const outfit = res.data;
       if (!outfit.primary_image_url) {
         throw new Error(outfit.error_message || "No image returned");
       }
       setResultUrl(outfit.primary_image_url);
+      setLastOutfit(outfit);
       setState("result");
       setHistory((prev) => [outfit, ...prev]);
     } catch (err) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } }).response?.data
-          ?.detail || (err as Error).message;
-      setErrorMessage(detail);
+      const info = classifyStudioError(err);
+      setErrorMessage(info.message);
       setState("error");
-      toast.error(detail);
+      toast.error(info.message);
+    }
+  };
+
+  const pickVariant = async (url: string) => {
+    setResultUrl(url);
+    if (!lastOutfit) return;
+    try {
+      const res = await studiosApi.setOutfitPrimary(lastOutfit.id, url);
+      setLastOutfit(res.data);
+    } catch {
+      toast.error("Could not set primary image.");
     }
   };
 
@@ -112,7 +130,7 @@ export default function StylistStudioPage() {
           onClick={submit}
           disabled={state === "loading" || !prompt.trim()}
           size="lg"
-          className="rounded-full"
+          className="rounded-full min-h-[44px]"
         >
           <Sparkles className="size-4" />
           {state === "loading" ? "Styling…" : "Generate look"}
@@ -123,10 +141,11 @@ export default function StylistStudioPage() {
         variants={fadeUp}
         className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_460px]"
       >
-        <div className="flex justify-center">
+        <div className="flex flex-col gap-4">
           <StudioCanvas
             state={state}
             errorMessage={errorMessage}
+            onRetry={submit}
             emptyHint="Add at least one piece to begin."
             loadingHint="FLUX is composing your look…"
           >
@@ -139,9 +158,43 @@ export default function StylistStudioPage() {
               />
             ) : null}
           </StudioCanvas>
+
+          <MultiImagePicker
+            images={lastOutfit?.image_urls || (resultUrl ? [resultUrl] : [])}
+            selected={resultUrl}
+            onSelect={pickVariant}
+          />
+
+          {lastOutfit ? (
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm" className="rounded-full">
+                <Link href={`/studios/stylist/${lastOutfit.id}`}>Open detail</Link>
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="rounded-full"
+                onClick={() =>
+                  void studiosApi
+                    .saveOutfitToCloset(lastOutfit.id, {
+                      name: lastOutfit.prompt.slice(0, 80),
+                    })
+                    .then(() => toast.success("Saved to closet."))
+                    .catch((err) =>
+                      toast.error(classifyStudioError(err).message)
+                    )
+                }
+              >
+                <BookmarkPlus className="size-3.5" />
+                Save to closet
+              </Button>
+            </div>
+          ) : null}
         </div>
 
-        <PromptPanel title="Look">
+        <ResponsivePromptPanel title="Look">
+          <BrandDNAToggle enabled={useBrandDna} onChange={setUseBrandDna} />
+
           <div className="space-y-2">
             <Label htmlFor="prompt">Mood</Label>
             <textarea
@@ -226,7 +279,7 @@ export default function StylistStudioPage() {
               ))}
             </div>
           </div>
-        </PromptPanel>
+        </ResponsivePromptPanel>
       </motion.div>
 
       <motion.section variants={fadeUp} className="mt-12">

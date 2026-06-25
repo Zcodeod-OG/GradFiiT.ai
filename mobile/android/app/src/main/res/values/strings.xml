@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GradFiiT</string>
+    <string name="title_activity_main">GradFiiT</string>
+    <string name="package_name">ai.gradfit.app</string>
+    <string name="custom_url_scheme">ai.gradfit.app</string>
+</resources>

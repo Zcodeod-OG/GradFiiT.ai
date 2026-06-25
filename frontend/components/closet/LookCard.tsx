@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Loader2, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { AlertCircle, Loader2, Pencil, Sparkles, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { type Garment, type Look } from "@/lib/api";
@@ -34,6 +34,8 @@ export function LookCard({
   const renderedAtLabel = look.last_rendered_at
     ? new Date(look.last_rendered_at).toLocaleDateString()
     : null;
+  const renderFailed =
+    !rendering && look.last_rendered_status === "failed";
 
   return (
     <motion.article
@@ -51,6 +53,13 @@ export function LookCard({
             alt={look.name}
             className="absolute inset-0 size-full object-cover"
           />
+        ) : renderFailed ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-6 text-center">
+            <AlertCircle className="size-5 text-destructive" />
+            <p className="text-xs text-destructive">
+              Last render failed. Try again.
+            </p>
+          </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-muted-foreground">
             Render this look to see your preview here.

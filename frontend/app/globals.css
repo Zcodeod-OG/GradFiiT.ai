@@ -85,6 +85,28 @@ body {
   overflow-x: clip;
 }
 
+/* Safe-area helpers for notched devices and Capacitor WebView */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mobile-sticky-cta {
+  position: sticky;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+}
+
+@media (min-width: 1024px) {
+  .mobile-sticky-cta {
+    position: static;
+    bottom: auto;
+  }
+}
+
 body {
   font-family: var(--font-body), "Segoe UI", sans-serif;
   color: var(--foreground);

@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
 import { crossDissolve } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { LoadingDots } from "@/components/ui/loading-placeholder";
@@ -12,6 +13,7 @@ type StudioCanvasProps = {
   emptyHint?: ReactNode;
   loadingHint?: ReactNode;
   errorMessage?: string | null;
+  onRetry?: () => void;
   children?: ReactNode;
   className?: string;
 };
@@ -27,6 +29,7 @@ export function StudioCanvas({
   emptyHint,
   loadingHint,
   errorMessage,
+  onRetry,
   children,
   className,
 }: StudioCanvasProps) {
@@ -91,9 +94,14 @@ export function StudioCanvas({
             initial="initial"
             animate="animate"
             exit="exit"
-            className="absolute inset-0 flex items-center justify-center text-center px-6 text-sm text-destructive"
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center text-sm text-destructive"
           >
-            {errorMessage || "Something went wrong. Try again."}
+            <p>{errorMessage || "Something went wrong. Try again."}</p>
+            {onRetry ? (
+              <Button size="sm" variant="outline" onClick={onRetry}>
+                Retry
+              </Button>
+            ) : null}
           </motion.div>
         )}
       </AnimatePresence>

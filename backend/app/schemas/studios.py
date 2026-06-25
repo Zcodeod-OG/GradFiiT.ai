@@ -24,6 +24,7 @@ class DesignGenerateRequest(BaseModel):
     seed: Optional[int] = None
     lora_uri: Optional[str] = None
     lora_scale: Optional[float] = Field(default=None, ge=0.0, le=1.5)
+    use_brand_dna: bool = True
 
 
 class DesignResponse(BaseModel):
@@ -69,6 +70,7 @@ class StylistGenerateRequest(BaseModel):
     num_images: int = Field(default=1, ge=1, le=4)
     lora_uri: Optional[str] = None
     lora_scale: Optional[float] = Field(default=None, ge=0.0, le=1.5)
+    use_brand_dna: bool = True
 
 
 class OutfitResponse(BaseModel):
@@ -91,6 +93,15 @@ class OutfitResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SetPrimaryImageRequest(BaseModel):
+    image_url: str = Field(..., min_length=8)
+
+
+class SaveToClosetRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=120)
+    category: Optional[str] = Field(default=None, max_length=64)
 
 
 # ── Brand DNA ────────────────────────────────────────────────────────

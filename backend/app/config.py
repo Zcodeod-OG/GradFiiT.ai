@@ -70,6 +70,11 @@ class Settings(BaseSettings):
         default="http://localhost:3000",
         description="Frontend URL for CORS and redirects"
     )
+
+    MOBILE_APP_URL_SCHEME: str = Field(
+        default="ai.gradfit.app",
+        description="Custom URL scheme for Capacitor OAuth deep links (ai.gradfit.app://auth/callback)",
+    )
     
     # ==================== Database Settings ====================
     

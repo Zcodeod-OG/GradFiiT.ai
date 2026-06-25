@@ -36,7 +36,9 @@ def _pkce_pair() -> Tuple[str, str]:
     return verifier, challenge
 
 
-def create_oauth_state_jwt(provider: str, code_verifier: str) -> str:
+def create_oauth_state_jwt(
+    provider: str, code_verifier: str, platform: str | None = None
+) -> str:
     now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=max(1, int(settings.OAUTH_STATE_EXPIRE_MINUTES)))
     payload = {
@@ -47,6 +49,8 @@ def create_oauth_state_jwt(provider: str, code_verifier: str) -> str:
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }
+    if platform == "app":
+        payload["plat"] = "app"
     return jwt.encode(payload, _state_signing_key(), algorithm=settings.ALGORITHM)
 
 
@@ -89,7 +93,7 @@ def provider_credentials_configured(provider: str) -> bool:
     return False
 
 
-def build_authorize_redirect_url(provider: str) -> str:
+def build_authorize_redirect_url(provider: str, platform: str | None = None) -> str:
     """Return full IdP authorize URL (caller returns RedirectResponse)."""
     if provider not in ALLOWED_PROVIDERS:
         raise ValueError("unsupported provider")
@@ -97,10 +101,11 @@ def build_authorize_redirect_url(provider: str) -> str:
         raise RuntimeError(f"OAuth not configured for provider={provider}")
 
     redirect_uri = oauth_callback_url(provider)
+    plat = "app" if platform == "app" else None
 
     if provider == "google":
         verifier, challenge = _pkce_pair()
-        state = create_oauth_state_jwt(provider, verifier)
+        state = create_oauth_state_jwt(provider, verifier, platform=plat)
         q = {
             "client_id": settings.GOOGLE_CLIENT_ID.strip(),
             "redirect_uri": redirect_uri,
@@ -116,7 +121,7 @@ def build_authorize_redirect_url(provider: str) -> str:
 
     if provider == "github":
         verifier, challenge = _pkce_pair()
-        state = create_oauth_state_jwt(provider, verifier)
+        state = create_oauth_state_jwt(provider, verifier, platform=plat)
         q = {
             "client_id": settings.GITHUB_CLIENT_ID.strip(),
             "redirect_uri": redirect_uri,
@@ -128,7 +133,7 @@ def build_authorize_redirect_url(provider: str) -> str:
         return "https://github.com/login/oauth/authorize?" + urlencode(q)
 
     # Facebook — no PKCE in the classic server-side secret flow
-    state = create_oauth_state_jwt(provider, "")
+    state = create_oauth_state_jwt(provider, "", platform=plat)
     q = {
         "client_id": settings.FACEBOOK_CLIENT_ID.strip(),
         "redirect_uri": redirect_uri,

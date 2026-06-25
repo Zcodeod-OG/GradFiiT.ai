@@ -43,6 +43,11 @@ export default function ClosetPage() {
     () => new Set()
   );
   const [detail, setDetail] = useState<Garment | null>(null);
+  // Outfit Builder prefill, set by "Complete the look" from a garment's
+  // detail modal. `prefillKey` bumps so the builder re-seeds even when the
+  // same ids are picked again.
+  const [builderPrefill, setBuilderPrefill] = useState<number[]>([]);
+  const [builderPrefillKey, setBuilderPrefillKey] = useState(0);
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<GarmentTypeKey>("all");
@@ -221,6 +226,16 @@ export default function ClosetPage() {
     setEditingLook(look);
   };
 
+  // From the garment detail modal's "Complete the look": seed the builder
+  // with the anchor + suggestion, drop into the Looks tab, and close detail.
+  const handleBuildOutfit = (garmentIds: number[]) => {
+    setEditingLook(null);
+    setBuilderPrefill(garmentIds);
+    setBuilderPrefillKey((k) => k + 1);
+    setTab("looks");
+    setDetail(null);
+  };
+
   const handleLookDelete = async (look: Look) => {
     if (
       typeof window !== "undefined" &&
@@ -257,11 +272,12 @@ export default function ClosetPage() {
       const deadline = Date.now() + 5 * 60 * 1000;
       while (Date.now() < deadline) {
         const statusRes = await tryonApi.getStatus(tryonId);
-        const status = statusRes.data;
+        // The status endpoint wraps the snapshot under `data.data`.
+        const status = statusRes.data?.data;
         if (status?.result_image_url) {
           break;
         }
-        if (status?.status === "FAILED" || status?.status === "failed") {
+        if (status?.status === "failed") {
           throw new Error(status?.error_message || "Render failed");
         }
         await new Promise((r) => setTimeout(r, 2500));
@@ -365,6 +381,8 @@ export default function ClosetPage() {
                 editingLook={editingLook}
                 onClearEditing={() => setEditingLook(null)}
                 onLookSaved={handleLookSaved}
+                prefillGarmentIds={builderPrefill}
+                prefillKey={builderPrefillKey}
               />
 
               {lookCount > 0 ? (
@@ -400,7 +418,11 @@ export default function ClosetPage() {
         onClose={() => setEditing(null)}
         onSaved={handleSaved}
       />
-      <GarmentDetailModal garment={detail} onClose={() => setDetail(null)} />
+      <GarmentDetailModal
+        garment={detail}
+        onClose={() => setDetail(null)}
+        onBuildOutfit={handleBuildOutfit}
+      />
     </StudioShell>
   );
 }

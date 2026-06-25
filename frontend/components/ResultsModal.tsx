@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { API_BASE_URL, tryonApi } from "@/lib/api"
+import { openOAuth } from "@/lib/platform"
 
 // Use Bookmark as fallback for Pinterest if not available
 const Pinterest = Bookmark
@@ -385,9 +386,7 @@ export function ResultsModal({
                         type="button"
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          window.location.href = `${API_BASE_URL}/api/auth/oauth/google/authorize`
-                        }}
+                        onClick={() => void openOAuth("google", API_BASE_URL)}
                       >
                         Google
                       </Button>
@@ -395,9 +394,7 @@ export function ResultsModal({
                         type="button"
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          window.location.href = `${API_BASE_URL}/api/auth/oauth/github/authorize`
-                        }}
+                        onClick={() => void openOAuth("github", API_BASE_URL)}
                       >
                         GitHub
                       </Button>
@@ -405,9 +402,7 @@ export function ResultsModal({
                         type="button"
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          window.location.href = `${API_BASE_URL}/api/auth/oauth/facebook/authorize`
-                        }}
+                        onClick={() => void openOAuth("facebook", API_BASE_URL)}
                       >
                         Facebook
                       </Button>

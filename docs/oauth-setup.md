@@ -24,6 +24,49 @@ provider console.
 
 ---
 
+## Mobile app (Capacitor)
+
+The iOS/Android apps load the same Next.js UI in a WebView. OAuth and Stripe use the in-app browser; successful OAuth returns via a custom URL scheme.
+
+| Item | Value |
+|------|-------|
+| App ID / bundle | `ai.gradfit.app` |
+| OAuth deep link | `ai.gradfit.app://auth/callback?token=<jwt>` |
+| Authorize query flag | `GET /api/auth/oauth/{provider}/authorize?platform=app` |
+
+### Backend
+
+Optional env (default shown):
+
+```env
+MOBILE_APP_URL_SCHEME=ai.gradfit.app
+```
+
+When `platform=app` is passed to `/authorize`, the OAuth state JWT is tagged and the callback 302 redirects to `{MOBILE_APP_URL_SCHEME}://auth/callback?token=…` instead of the web `/auth/callback` URL.
+
+No provider console changes are required — the IdP still redirects to the **backend** callback URL. Only the final redirect to the frontend uses the app scheme.
+
+### iOS
+
+- URL scheme registered in `mobile/ios/App/App/Info.plist`
+- Camera / photo library usage strings included for `@capacitor/camera`
+
+### Android
+
+- Deep link intent filter for `ai.gradfit.app://auth/callback` in `AndroidManifest.xml`
+- `CAMERA` permission for native photo capture
+
+### Testing native OAuth
+
+1. Build/sync: `npm run mobile:sync` then open iOS Simulator or Android emulator.
+2. Tap **Continue with Google** on `/login`.
+3. Complete consent in the in-app browser.
+4. App should reopen and land on `/` signed in.
+
+Stripe Checkout uses the same Browser plugin from `/pricing` and `/account/billing` — success URLs (`/billing/success`) load inside the browser; user can close and return to the app tab bar.
+
+---
+
 ## 1. Google
 
 ### Create the OAuth client

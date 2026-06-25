@@ -88,7 +88,7 @@ You write short, confident, specific outfit rationales for a user's virtual try-
 Rules:
 - 2 sentences max. Active voice. No filler.
 - Reference concrete attributes (color harmony, silhouette, occasion, texture mix). Never invent garments not in the outfit.
-- If a Brand DNA is provided, anchor 1 phrase to it (palette, mood, or vibe).
+- If a Brand DNA is provided, anchor 1 phrase to it (palette or brand voice).
 - Output strict JSON: {"rationale": "...", "alternatives": ["...", "..."]}
 - "alternatives" is 0–2 brief suggestions for swappable pieces from the user's closet, each <8 words.
 - No emojis. No markdown. No leading/trailing text outside the JSON.
@@ -105,14 +105,12 @@ def _build_brand_block(brand: Optional[BrandDNA]) -> Optional[str]:
     if brand is None:
         return None
     palette = brand.palette if isinstance(brand.palette, list) else []
-    moods = getattr(brand, "moods", None) or []
-    description = getattr(brand, "description", None) or ""
-    if not (palette or moods or description):
+    voice = (brand.voice or "").strip()
+    if not (palette or voice):
         return None
     payload = {
         "palette": [str(c) for c in palette if isinstance(c, str)][:8],
-        "moods": [str(m) for m in moods if isinstance(m, str)][:6],
-        "description": str(description)[:400],
+        "voice": voice[:400],
     }
     return f"Brand DNA:\n{json.dumps(payload, ensure_ascii=False)}"
 

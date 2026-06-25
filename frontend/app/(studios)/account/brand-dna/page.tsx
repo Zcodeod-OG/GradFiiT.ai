@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Plus, Save, Trash2 } from "lucide-react";
+import { Plus, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -11,6 +11,7 @@ import { StudioShell } from "@/components/studios/StudioShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { brandDnaApi, uploadApi, type BrandDNA } from "@/lib/api";
 import { fadeUp } from "@/lib/motion";
 
@@ -22,8 +23,10 @@ export default function BrandDNAPage() {
   const [voice, setVoice] = useState("");
   const [loraUri, setLoraUri] = useState("");
   const [loraStrength, setLoraStrength] = useState(1.0);
+  const [loraStatus, setLoraStatus] = useState("none");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     brandDnaApi
@@ -42,6 +45,7 @@ export default function BrandDNAPage() {
     setVoice(data.voice || "");
     setLoraUri(data.lora_uri || "");
     setLoraStrength(data.lora_strength ?? 1.0);
+    setLoraStatus(data.lora_status || "none");
   };
 
   const addPaletteColor = () => {
@@ -97,21 +101,58 @@ export default function BrandDNAPage() {
     }
   };
 
+  const reset = async () => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Reset Brand DNA? This clears palette, voice, refs, and LoRA.")
+    ) {
+      return;
+    }
+    setResetting(true);
+    try {
+      await brandDnaApi.reset();
+      setPalette([]);
+      setLogos([]);
+      setModels([]);
+      setVoice("");
+      setLoraUri("");
+      setLoraStrength(1.0);
+      setLoraStatus("none");
+      toast.success("Brand DNA reset.");
+    } catch {
+      toast.error("Could not reset Brand DNA.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <StudioShell
       eyebrow="Workspace"
       title="Brand DNA"
       description="The palette, models, and tone every studio should pull from. Updates take effect on the next generation."
       actions={
-        <Button
-          onClick={save}
-          disabled={loading || saving}
-          size="lg"
-          className="rounded-full"
-        >
-          <Save className="size-4" />
-          {saving ? "Saving…" : "Save changes"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={reset}
+            disabled={loading || resetting}
+            size="lg"
+            className="rounded-full"
+          >
+            <RotateCcw className="size-4" />
+            {resetting ? "Resetting…" : "Reset"}
+          </Button>
+          <Button
+            onClick={save}
+            disabled={loading || saving}
+            size="lg"
+            className="rounded-full"
+          >
+            <Save className="size-4" />
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
       }
     >
       <motion.div
@@ -197,15 +238,26 @@ export default function BrandDNAPage() {
         </PromptPanel>
 
         <PromptPanel title="LoRA (optional)">
-          <p className="text-xs text-muted-foreground">
-            Paste an S3 URI to a fine-tuned ``.safetensors`` LoRA. We hot-swap
-            it into FLUX for every generation in your account.
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Paste an S3 URI to a fine-tuned ``.safetensors`` LoRA. We hot-swap
+              it into FLUX for every generation in your account.
+            </p>
+            <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
+              {loraStatus}
+            </Badge>
+          </div>
           <Input
             value={loraUri}
             onChange={(event) => setLoraUri(event.target.value)}
             placeholder="s3://gradfit-models/loras/your-brand.safetensors"
           />
+          {loraUri && loraStatus === "none" ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              URI must be a valid S3 or HTTPS link ending in `.safetensors` to
+              mark LoRA as ready.
+            </p>
+          ) : null}
           <div className="space-y-1">
             <Label htmlFor="lora-strength">Strength ({loraStrength.toFixed(2)})</Label>
             <input

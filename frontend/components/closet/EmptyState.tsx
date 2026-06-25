@@ -16,6 +16,10 @@ export function EmptyState({ onAdd, variant = "empty" }: EmptyStateProps) {
         <p className="text-sm text-muted-foreground">
           Nothing matches those filters.
         </p>
+        <p className="max-w-xs text-xs text-muted-foreground/80">
+          Try a different category or clear your search. Newly added pieces
+          appear here once they finish processing.
+        </p>
       </div>
     );
   }

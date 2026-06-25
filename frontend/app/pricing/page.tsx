@@ -9,6 +9,7 @@ import { ArrowRight, Check, Lock, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { billingApi, type BillingPlan } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { openExternalUrl } from "@/lib/platform"
 import { PLAN_CARDS, type SubscriptionTier } from "@/lib/plans"
 
 type MergedPlan = BillingPlan & {
@@ -148,7 +149,7 @@ function PricingPageInner() {
       setCheckoutPlan(plan.code)
       const res = await billingApi.createCheckoutSession(plan.code)
       if (res.data?.url) {
-        window.location.href = res.data.url
+        await openExternalUrl(res.data.url)
       } else {
         toast.error("Stripe did not return a checkout URL.")
       }
@@ -166,7 +167,7 @@ function PricingPageInner() {
     try {
       const res = await billingApi.openPortal()
       if (res.data?.url) {
-        window.location.href = res.data.url
+        await openExternalUrl(res.data.url)
       }
     } catch (err: unknown) {
       const detail =

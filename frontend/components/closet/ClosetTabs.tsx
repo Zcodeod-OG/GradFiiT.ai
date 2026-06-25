@@ -20,27 +20,31 @@ export function ClosetTabs({
   lookCount,
 }: ClosetTabsProps) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-background/60 p-1 backdrop-blur-md">
-      <TabButton
-        active={value === "garments"}
-        onClick={() => onChange("garments")}
-        icon={<Shirt className="size-3.5" />}
-        label="Wardrobe"
-        count={garmentCount}
-      />
-      <TabButton
-        active={value === "outfits"}
-        onClick={() => onChange("outfits")}
-        icon={<WandSparkles className="size-3.5" />}
-        label="Outfits"
-      />
-      <TabButton
-        active={value === "looks"}
-        onClick={() => onChange("looks")}
-        icon={<Layers className="size-3.5" />}
-        label="Looks"
-        count={lookCount}
-      />
+    <div className="w-full overflow-x-auto lg:overflow-visible">
+      <div className="sticky top-0 z-30 -mx-4 px-4 py-2 mb-2 bg-background/95 backdrop-blur-md border-b border-border/40 lg:static lg:mx-0 lg:px-0 lg:py-0 lg:mb-0 lg:bg-transparent lg:backdrop-blur-none lg:border-0">
+        <div className="inline-flex min-w-max items-center gap-1 rounded-full border border-border/50 bg-background/60 p-1 backdrop-blur-md">
+          <TabButton
+            active={value === "garments"}
+            onClick={() => onChange("garments")}
+            icon={<Shirt className="size-3.5" />}
+            label="Wardrobe"
+            count={garmentCount}
+          />
+          <TabButton
+            active={value === "outfits"}
+            onClick={() => onChange("outfits")}
+            icon={<WandSparkles className="size-3.5" />}
+            label="Outfits"
+          />
+          <TabButton
+            active={value === "looks"}
+            onClick={() => onChange("looks")}
+            icon={<Layers className="size-3.5" />}
+            label="Looks"
+            count={lookCount}
+          />
+        </div>
+      </div>
     </div>
   );
 }

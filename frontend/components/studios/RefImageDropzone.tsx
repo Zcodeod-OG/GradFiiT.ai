@@ -1,12 +1,13 @@
 "use client";
 
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, Camera, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { uploadApi } from "@/lib/api";
+import { captureNativePhoto, isNativePlatform } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 type RefImageDropzoneProps = {
@@ -29,10 +30,8 @@ export function RefImageDropzone({
 }: RefImageDropzoneProps) {
   const [uploading, setUploading] = useState(false);
 
-  const onDrop = useCallback(
-    async (files: File[]) => {
-      const file = files[0];
-      if (!file) return;
+  const uploadFile = useCallback(
+    async (file: File) => {
       try {
         setUploading(true);
         const res =
@@ -55,6 +54,28 @@ export function RefImageDropzone({
     },
     [onChange, uploadKind]
   );
+
+  const onDrop = useCallback(
+    async (files: File[]) => {
+      const file = files[0];
+      if (!file) return;
+      await uploadFile(file);
+    },
+    [uploadFile]
+  );
+
+  const handleNativeCamera = useCallback(async () => {
+    try {
+      setUploading(true);
+      const captured = await captureNativePhoto();
+      if (!captured) return;
+      await uploadFile(captured.file);
+    } catch (err) {
+      toast.error((err as Error).message || "Could not open camera.");
+    } finally {
+      setUploading(false);
+    }
+  }, [uploadFile]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -105,6 +126,20 @@ export function RefImageDropzone({
       </div>
 
       {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
+
+      {isNativePlatform() && !value ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-h-[44px] w-full"
+          disabled={uploading}
+          onClick={() => void handleNativeCamera()}
+        >
+          <Camera className="size-4 mr-2" />
+          Take photo
+        </Button>
+      ) : null}
     </div>
   );
 }

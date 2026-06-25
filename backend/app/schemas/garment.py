@@ -68,12 +68,19 @@ class OutfitRecommendation(BaseModel):
     `garments` is the ordered list of pieces (anchor first); `palette`
     is up to 5 hex colours summarising the composite look. The UI uses
     `reason` as a one-line caption beneath the outfit thumbnail.
+
+    `stylist_note` is an optional LLM-written rationale (Bedrock); it is
+    only populated when stylist notes are requested and the model is
+    reachable. `alternatives` holds 0-2 short swap suggestions. Both
+    fall back to absent/empty so the UI can render `reason` instead.
     """
 
     garments: List[Garment]
     score: float
     reason: str
     palette: List[str]
+    stylist_note: Optional[str] = None
+    alternatives: List[str] = []
 
 
 class OutfitRecommendationsResponse(BaseModel):
